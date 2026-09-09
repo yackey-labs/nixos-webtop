@@ -178,6 +178,17 @@ if [ -e /usr/local/lib/libEGL_nvidia.so.0 ]; then
   export LD_LIBRARY_PATH="/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
 
   mkdir -p /run/nvidia-shim/gbm /run/nvidia-shim/egl_external_platform.d
+
+  # GBM_BACKENDS_PATH REPLACES the default search path, it does not extend it,
+  # so the shim directory has to carry Mesa's backends too. Without this, Mesa
+  # can no longer find its own dri_gbm.so and GBM fails harder than it did
+  # before any of this ran:
+  #   MESA-LOADER: failed to open dri: /run/nvidia-shim/gbm/dri_gbm.so
+  #   [Wayland] GPU Initialization failed: Failed to create Raw GBM Device.
+  for mesa_backend in /run/opengl-driver/lib/gbm/*.so; do
+    [ -e "$mesa_backend" ] || continue
+    ln -sf "$mesa_backend" "/run/nvidia-shim/gbm/$(basename "$mesa_backend")"
+  done
   for lib in /usr/local/lib/libnvidia-egl-gbm.so.*; do
     [ -e "$lib" ] || continue
     ln -sf "$lib" /run/nvidia-shim/gbm/nvidia-drm_gbm.so
