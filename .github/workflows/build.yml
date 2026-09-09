@@ -71,7 +71,13 @@ jobs:
             --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             "docker-archive:${{ steps.build.outputs.tarball }}" \
             "docker://${REG}:${TAG}"
+          # Registry-to-registry, so this needs BOTH sets of credentials. With
+          # only --dest-creds skopeo cannot read back the tag it just wrote:
+          #   initializing source docker://...: unable to retrieve auth token:
+          #   invalid username/password: unauthorized
+          # The blobs are already uploaded, so this copy is just a manifest write.
           nix run nixpkgs#skopeo -- --insecure-policy copy \
+            --src-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             "docker://${REG}:${TAG}" "docker://${REG}:latest"
           echo "pushed ${REG}:${TAG}"
