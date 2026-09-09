@@ -1,0 +1,8 @@
+#!/bin/bash
+if [ "${PIXELFLUX_WAYLAND,,}" = "true" ]; then exec sleep infinity; fi
+until s6-setuidgid abc xset q >/dev/null 2>&1; do sleep 0.5; done
+if [ ! -f "$HOME/.xsettingsd" ]; then
+  echo "Xft/DPI 98304" > "$HOME/.xsettingsd"
+  chown abc:abc "$HOME/.xsettingsd"
+fi
+exec s6-setuidgid abc xsettingsd

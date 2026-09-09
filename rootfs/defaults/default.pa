@@ -1,0 +1,10 @@
+# PulseAudio script for the container: no hardware, two null sinks that
+# selkies (pcmflux) records from ("output") and plays the browser mic into ("input").
+.fail
+load-module module-native-protocol-unix auth-anonymous=1 socket=/run/pulse/native
+load-module module-null-sink sink_name=output sink_properties=device.description=output
+load-module module-null-sink sink_name=input sink_properties=device.description=input
+load-module module-always-sink
+set-default-sink output
+set-default-source output.monitor
+.nofail

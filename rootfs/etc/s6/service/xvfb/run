@@ -1,0 +1,22 @@
+#!/bin/bash
+# Virtual X server. selkies-resize/xrandr shrink the huge default screen to the browser size.
+# Wayland images use pixelflux's built-in compositor instead of Xvfb.
+if [ "${PIXELFLUX_WAYLAND,,}" = "true" ]; then exec sleep infinity; fi
+
+rm -f /tmp/.X1-lock /tmp/.X11-unix/X1
+
+DEFAULT_RES="${MAX_RES:-15360x8640}"
+if [ -n "${SELKIES_MANUAL_HEIGHT:-}" ] || [ -n "${SELKIES_MANUAL_WIDTH:-}" ]; then
+  W="${SELKIES_MANUAL_WIDTH:-1024}"; H="${SELKIES_MANUAL_HEIGHT:-768}"
+  [ "$W" = "0" ] && W=1024
+  [ "$H" = "0" ] && H=768
+  DEFAULT_RES="${W}x${H}"
+fi
+
+exec s6-setuidgid abc Xvfb "${DISPLAY}" \
+  -screen 0 "${DEFAULT_RES}x24" \
+  -dpi 96 \
+  +extension COMPOSITE +extension DAMAGE +extension GLX +extension RANDR \
+  +extension RENDER +extension MIT-SHM +extension XFIXES +extension XTEST \
+  +iglx +render -nolisten tcp -ac -noreset -shmem \
+  -fp "${XVFB_FONT_PATH}"

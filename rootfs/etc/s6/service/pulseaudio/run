@@ -1,0 +1,8 @@
+#!/bin/bash
+mkdir -p /run/pulse
+chown abc:abc /run/pulse
+rm -f /run/pulse/pid /run/pulse/native
+exec s6-setuidgid abc pulseaudio \
+  -n -F /defaults/default.pa \
+  --daemonize=no --exit-idle-time=-1 --disallow-exit \
+  --log-target=stderr --log-level=0

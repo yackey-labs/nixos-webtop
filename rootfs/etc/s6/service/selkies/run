@@ -1,0 +1,9 @@
+#!/bin/bash
+# Wait for X and PulseAudio, then start the Selkies backend (websocket mode; nginx fronts it).
+if [ "${PIXELFLUX_WAYLAND,,}" != "true" ]; then
+  until s6-setuidgid abc xset q >/dev/null 2>&1; do sleep 0.5; done
+fi
+until [ -S /run/pulse/native ]; do sleep 0.5; done
+
+cd /tmp
+exec s6-setuidgid abc selkies --addr="localhost" --mode="websockets"

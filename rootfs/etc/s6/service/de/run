@@ -1,0 +1,38 @@
+#!/bin/bash
+# Desktop environment / window manager, as user abc.
+STARTWM=/defaults/startwm.sh
+[ -x "$HOME/.config/startwm.sh" ] && STARTWM="$HOME/.config/startwm.sh"
+
+# Wayland: selkies (pixelflux) owns the parent compositor on wayland-1; the WM nests inside it.
+if [ "${PIXELFLUX_WAYLAND,,}" = "true" ]; then
+  SOCKET="${XDG_RUNTIME_DIR}/${WAYLAND_DISPLAY:-wayland-1}"
+  echo "[de] waiting for compositor socket ${SOCKET}"
+  until [ -S "$SOCKET" ]; do sleep 0.5; done
+  cd "$HOME"
+  export WAYLAND_DISPLAY="${WAYLAND_DISPLAY:-wayland-1}"
+  exec s6-setuidgid abc dbus-run-session --config-file=/usr/share/dbus-1/session.conf -- bash "$STARTWM"
+fi
+
+until s6-setuidgid abc xset q >/dev/null 2>&1; do sleep 0.5; done
+
+# Initial resolution (selkies resizes later to match the browser).
+W="${SELKIES_MANUAL_WIDTH:-1024}"; H="${SELKIES_MANUAL_HEIGHT:-768}"
+[ "$W" = "0" ] && W=1024
+[ "$H" = "0" ] && H=768
+MODELINE=$(cvt "$W" "$H" | grep Modeline | sed 's/^.*Modeline //' | tr -d '"')
+MODE_NAME=$(echo "$MODELINE" | awk '{print $1}')
+if ! s6-setuidgid abc xrandr | grep -q "$MODE_NAME"; then
+  s6-setuidgid abc xrandr --newmode $MODELINE >/dev/null 2>&1
+  s6-setuidgid abc xrandr --addmode screen "$MODE_NAME" >/dev/null 2>&1
+  s6-setuidgid abc xrandr --output screen --mode "$MODE_NAME" --dpi 96 >/dev/null 2>&1
+fi
+
+if [ ! -f "$HOME/.Xresources" ] || ! grep -q Xcursor.theme "$HOME/.Xresources"; then
+  echo "Xcursor.theme: ${XCURSOR_THEME:-Adwaita}" >> "$HOME/.Xresources"
+fi
+chown abc:abc "$HOME/.Xresources"
+s6-setuidgid abc xrdb "$HOME/.Xresources"
+s6-setuidgid abc xsetroot -solid '#1e1e2e' -cursor_name left_ptr
+
+cd "$HOME"
+exec s6-setuidgid abc dbus-run-session --config-file=/usr/share/dbus-1/session.conf -- bash "$STARTWM"

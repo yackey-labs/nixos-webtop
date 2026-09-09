@@ -1,0 +1,5 @@
+#!/bin/bash
+mkdir -p /run/dbus
+chown abc:abc /run/dbus
+rm -f /run/dbus/pid
+exec s6-setuidgid abc dbus-daemon --config-file=/defaults/dbus-system.conf --nofork --nosyslog

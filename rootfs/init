@@ -1,0 +1,185 @@
+#!/bin/bash
+# Container entrypoint. Does the one-shot setup linuxserver's init-* s6 stages
+# do, then execs s6-svscan as PID 1 to supervise the long-running services.
+set -u
+
+log() { echo "[init] $*"; }
+
+log "Nix-built Selkies image starting (title: ${TITLE:-Selkies})"
+
+PUID="${PUID:-911}"
+PGID="${PGID:-911}"
+
+# ---- user / group mapping ------------------------------------------------
+if [ "$(id -g abc)" != "$PGID" ]; then groupmod -o -g "$PGID" abc; fi
+if [ "$(id -u abc)" != "$PUID" ]; then usermod -o -u "$PUID" abc; fi
+log "abc uid=$(id -u abc) gid=$(id -g abc)"
+
+# ---- directories ---------------------------------------------------------
+mkdir -p /config /run/service /run/pulse /run/dbus /run/nginx /run/selkies \
+         /tmp/.X11-unix /tmp/.ICE-unix /var/log/nginx /var/lib/nginx
+chmod 1777 /tmp /tmp/.X11-unix /tmp/.ICE-unix
+chown abc:abc /run/pulse /run/dbus /run/selkies
+chown abc:abc /config
+if [ "${SKIP_CHOWN_CONFIG:-false}" != "true" ]; then
+  chown -R abc:abc /config 2>/dev/null || true
+fi
+
+export XDG_RUNTIME_DIR="/run/user/${PUID}"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+chown abc:abc "$XDG_RUNTIME_DIR"
+
+[ -s /etc/machine-id ] || dbus-uuidgen > /etc/machine-id
+
+# ---- default per-user config (first run) ---------------------------------
+CONF_DIR="$HOME/.config/openbox"
+mkdir -p "$HOME/.config"
+if [ ! -f "$CONF_DIR/autostart" ]; then
+  mkdir -p "$CONF_DIR"
+  cp /defaults/autostart "$CONF_DIR/autostart"
+fi
+if [ ! -f "$CONF_DIR/menu.xml" ]; then
+  mkdir -p "$CONF_DIR"
+  cp /defaults/menu.xml "$CONF_DIR/menu.xml"
+fi
+# Per-app config templates baked into the image (/defaults/config/<app> -> ~/.config/<app>).
+for tpl in /defaults/config/*/; do
+  [ -d "$tpl" ] || continue
+  app=$(basename "$tpl")
+  if [ ! -d "$HOME/.config/$app" ]; then
+    cp -rL "$tpl" "$HOME/.config/$app"
+  fi
+done
+
+# i3 would otherwise pop its first-run config wizard; seed the stock config instead.
+if command -v i3 >/dev/null 2>&1 && [ ! -f "$HOME/.config/i3/config" ] && [ -f /usr/etc/i3/config ]; then
+  mkdir -p "$HOME/.config/i3"
+  cp /usr/etc/i3/config "$HOME/.config/i3/config"
+fi
+chown -R abc:abc "$HOME/.config"
+
+# ---- locale --------------------------------------------------------------
+if [ -n "${LC_ALL:-}" ]; then
+  export LANG="$LC_ALL"
+  export LANGUAGE="${LC_ALL%.UTF-8}"
+fi
+
+# ---- hardening flags (subset of linuxserver's) ---------------------------
+if [ "${HARDEN_DESKTOP:-false}" = "true" ]; then
+  export DISABLE_SUDO=true DISABLE_TERMINALS=true DISABLE_OPEN_TOOLS=true
+  : "${SELKIES_FILE_TRANSFERS=}"
+  : "${SELKIES_COMMAND_ENABLED=false}"
+  : "${SELKIES_UI_SIDEBAR_SHOW_FILES=false}"
+  : "${SELKIES_UI_SIDEBAR_SHOW_APPS=false}"
+  export SELKIES_FILE_TRANSFERS SELKIES_COMMAND_ENABLED SELKIES_UI_SIDEBAR_SHOW_FILES SELKIES_UI_SIDEBAR_SHOW_APPS
+fi
+if [ "${DISABLE_SUDO:-false}" = "true" ]; then
+  log "disabling sudo"
+  chmod 0000 /usr/local/bin/sudo
+fi
+
+# ---- nginx ---------------------------------------------------------------
+CPORT="${CUSTOM_PORT:-3000}"
+CHPORT="${CUSTOM_HTTPS_PORT:-3001}"
+export CUSTOM_WS_PORT="${CUSTOM_WS_PORT:-8082}"
+CUSER="${CUSTOM_USER:-abc}"
+SFOLDER="${SUBFOLDER:-/}"
+FILE_MANAGER_PATH="${FILE_MANAGER_PATH:-$HOME/Desktop}"
+DASHBOARD="${DASHBOARD:-selkies-dashboard}"
+SELKIES_FILE_TRANSFERS="${SELKIES_FILE_TRANSFERS-upload,download}"
+
+if [ ! -f /config/ssl/cert.pem ]; then
+  mkdir -p /config/ssl
+  openssl req -new -x509 -days 3650 -nodes \
+    -out /config/ssl/cert.pem -keyout /config/ssl/cert.key \
+    -subj "/C=US/ST=CA/L=Carlsbad/O=Selkies/OU=Nix Selkies/CN=*" >/dev/null 2>&1
+  chmod 600 /config/ssl/cert.key
+  chown -R abc:abc /config/ssl
+fi
+
+NGINX_SITE=/run/nginx/default.conf
+cp /defaults/nginx-default.conf "$NGINX_SITE"
+sed -i "s/3000/$CPORT/g; s/3001/$CHPORT/g; s/CWS/$CUSTOM_WS_PORT/g" "$NGINX_SITE"
+sed -i "s|SUBFOLDER|$SFOLDER|g; s|REPLACE_DOWNLOADS_PATH|$FILE_MANAGER_PATH|g" "$NGINX_SITE"
+s6-setuidgid abc mkdir -p "$FILE_MANAGER_PATH"
+if [[ "${SELKIES_FILE_TRANSFERS,,}" != *"download"* ]] || [ "${HARDEN_DESKTOP:-false}" = "true" ]; then
+  sed -i '/files {/,/^  }/d' "$NGINX_SITE"
+fi
+if [ -n "${DISABLE_IPV6:-}" ]; then
+  sed -i '/listen \[::\]/d' "$NGINX_SITE"
+fi
+if [ -n "${PASSWORD:-}" ]; then
+  printf '%s:%s\n' "$CUSER" "$(openssl passwd -apr1 "$PASSWORD")" > /run/nginx/.htpasswd
+  sed -i 's/#//g' "$NGINX_SITE"
+fi
+sed "s|@MIME_TYPES@|$(dirname "$(readlink -f "$(command -v nginx)")")/../conf/mime.types|" \
+  /defaults/nginx.conf > /run/nginx/nginx.conf
+
+# ---- dashboard -----------------------------------------------------------
+rm -rf /run/selkies/web
+cp -a "/usr/share/selkies/$DASHBOARD/." /run/selkies/web/ 2>/dev/null || cp -rL "/usr/share/selkies/$DASHBOARD/." /run/selkies/web/
+chmod -R u+w /run/selkies/web
+sed -i "s|REPLACE_DOWNLOADS_PATH|$FILE_MANAGER_PATH|g" /run/selkies/web/nginx/footer.html
+cp /usr/share/selkies/www/icon.png /run/selkies/web/favicon.ico
+cp /usr/share/selkies/www/icon.png /run/selkies/web/icon.png
+cat > /run/selkies/web/manifest.json <<MANIFEST
+{
+  "name": "${TITLE:-Selkies}",
+  "short_name": "${TITLE:-Selkies}",
+  "manifest_version": 2,
+  "version": "1.0.0",
+  "display": "fullscreen",
+  "background_color": "#000000",
+  "theme_color": "#000000",
+  "icons": [ { "src": "icon.png", "type": "image/png", "sizes": "180x180" } ],
+  "start_url": "${SFOLDER}"
+}
+MANIFEST
+chown -R abc:abc /run/selkies/web
+
+# ---- GPU device permissions ----------------------------------------------
+for dev in $(find /dev/dri -type c 2>/dev/null); do
+  gid=$(stat -c '%g' "$dev")
+  if ! id -G abc | grep -qw "$gid"; then
+    gname=$(getent group "$gid" | cut -d: -f1)
+    if [ -z "$gname" ]; then
+      gname="video$gid"
+      groupadd -g "$gid" "$gname"
+    fi
+    usermod -a -G "$gname" abc
+    log "added abc to group $gname for $dev"
+  fi
+done
+if [ -e /dev/dri/renderD128 ] && [ ! -e /dev/dri/renderD129 ] && [ -z "${DRI_NODE+x}" ] && ! command -v nvidia-smi >/dev/null 2>&1; then
+  export DRI_NODE=/dev/dri/renderD128
+fi
+
+# ---- gamepad passthrough -------------------------------------------------
+mkdir -pm1777 /dev/input 2>/dev/null || true
+if [ -z "${NO_GAMEPAD+x}" ] && { mknod /dev/input/js0 c 13 0 2>/dev/null || touch /dev/input/js0 2>/dev/null; }; then
+  for i in 1 2 3; do mknod /dev/input/js$i c 13 $i 2>/dev/null || touch /dev/input/js$i; done
+  for i in 0 1 2 3; do mknod /dev/input/event100$i c 13 $((1064+i)) 2>/dev/null || touch /dev/input/event100$i; done
+  chmod 777 /dev/input/js* /dev/input/event100* 2>/dev/null || true
+  export LD_PRELOAD="/usr/local/lib/selkies_joystick_interposer.so:/opt/lib/libudev.so.1.0.0-fake"
+  log "virtual gamepads enabled"
+else
+  export SELKIES_UI_SIDEBAR_SHOW_GAMEPADS=false SELKIES_GAMEPAD_ENABLED=false
+  export SELKIES_ENABLE_PLAYER2=false SELKIES_ENABLE_PLAYER3=false SELKIES_ENABLE_PLAYER4=false
+fi
+
+touch /tmp/selkies_js.log
+chmod 777 /tmp/selkies* 2>/dev/null || true
+
+# ---- hand off to s6 ------------------------------------------------------
+rm -rf /run/service/*
+cp -r /etc/s6/service/. /run/service/
+mkdir -p /run/service/.s6-svscan
+cat > /run/service/.s6-svscan/finish <<'FIN'
+#!/bin/sh
+exit 0
+FIN
+chmod +x /run/service/.s6-svscan/finish
+
+log "starting services"
+exec s6-svscan /run/service

@@ -1,0 +1,5 @@
+#!/bin/bash
+if pgrep -f "[n]ginx:" >/dev/null; then
+  pkill -ef "[n]ginx:"; sleep 1
+fi
+exec nginx -p /run/nginx -c /run/nginx/nginx.conf -e /dev/stderr -g 'daemon off;'
