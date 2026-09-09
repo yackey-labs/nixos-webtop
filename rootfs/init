@@ -155,6 +155,47 @@ if [ -e /dev/dri/renderD128 ] && [ ! -e /dev/dri/renderD129 ] && [ -z "${DRI_NOD
   export DRI_NODE=/dev/dri/renderD128
 fi
 
+# ---- NVIDIA driver shims --------------------------------------------------
+# The NVIDIA container toolkit injects the host driver into /usr/local/lib, a
+# path a Nix-built image does not search: its GL stack lives under
+# /run/opengl-driver/lib and carries Mesa only. The EGL ICD the toolkit drops in
+# (10_nvidia.json) names "libEGL_nvidia.so.0" with no path, so the loader never
+# finds it and everything silently falls back to software:
+#
+#   [Wayland] GPU Initialization failed: Failed to allocate GBM buffer.
+#             Falling back to Software Renderer (Pixman).
+#   niri::backend::winit: error getting EGL device render node
+#
+# Three things have to be true, and a library path alone is not enough:
+#   1. libEGL_nvidia.so.0 is loadable            -> LD_LIBRARY_PATH
+#   2. GBM can find the nvidia backend           -> GBM_BACKENDS_PATH, and the
+#      backend must be named nvidia-drm_gbm.so, which is not what the toolkit
+#      injects (libnvidia-egl-gbm.so.1), so it needs a symlink
+#   3. EGL knows about the external GBM platform -> an egl_external_platform.d
+#      entry, which the toolkit does not always inject
+if [ -e /usr/local/lib/libEGL_nvidia.so.0 ]; then
+  log "nvidia driver detected in /usr/local/lib; wiring EGL/GBM shims"
+  export LD_LIBRARY_PATH="/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
+  mkdir -p /run/nvidia-shim/gbm /run/nvidia-shim/egl_external_platform.d
+  for lib in /usr/local/lib/libnvidia-egl-gbm.so.*; do
+    [ -e "$lib" ] || continue
+    ln -sf "$lib" /run/nvidia-shim/gbm/nvidia-drm_gbm.so
+    cat > /run/nvidia-shim/egl_external_platform.d/15_nvidia_gbm.json <<JSON
+{
+    "file_format_version" : "1.0.0",
+    "ICD" : {
+        "library_path" : "$lib"
+    }
+}
+JSON
+    break
+  done
+  export GBM_BACKENDS_PATH=/run/nvidia-shim/gbm
+  export __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS=/run/nvidia-shim/egl_external_platform.d
+  chmod -R a+rX /run/nvidia-shim
+fi
+
 # ---- gamepad passthrough -------------------------------------------------
 mkdir -pm1777 /dev/input 2>/dev/null || true
 if [ -z "${NO_GAMEPAD+x}" ] && { mknod /dev/input/js0 c 13 0 2>/dev/null || touch /dev/input/js0 2>/dev/null; }; then
