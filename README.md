@@ -12,6 +12,16 @@ streamed by [Selkies](https://github.com/selkies-project/selkies) over WebSocket
 
 ![niri + noctalia-shell streamed from the aarch64 image](docs-screenshot-niri.png)
 
+## License
+
+GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
+[linuxserver/docker-webtop][lsw], both GPL-3.0, so the same terms apply here.
+[Selkies][sel] itself is MPL-2.0 and is consumed unmodified from upstream.
+
+[lsb]: https://github.com/linuxserver/docker-baseimage-selkies
+[lsw]: https://github.com/linuxserver/docker-webtop
+[sel]: https://github.com/selkies-project/selkies
+
 ## Images
 
 | flake output       | what it is                                                | linuxserver equivalent          |
@@ -19,6 +29,7 @@ streamed by [Selkies](https://github.com/selkies-project/selkies) over WebSocket
 | `image-base`       | Xvfb + openbox + st/xterm + Selkies + nginx + PulseAudio  | `baseimage-selkies`             |
 | `image-webtop-i3`  | `image-base` + i3, i3status, dmenu, xfce4-terminal, Chromium | `webtop:arch-i3`             |
 | `image-webtop-niri`| Wayland mode: niri + noctalia-shell, foot, Chromium (Wayland), nautilus, xwayland-satellite | no direct equivalent (closest: `webtop:arch-i3` with `PIXELFLUX_WAYLAND=true`/sway) |
+| `image-webtop-hyprland`| Wayland mode: Hyprland + waybar, fuzzel, mako, swaybg, foot, Chromium | no equivalent |
 
 Both are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
 
@@ -118,3 +129,35 @@ Selkies sidebar's keyboard-lock toggle or remapping to avoid the host grabbing t
 - Docker-in-Docker (`svc-docker`), proot-apps, pelorus accessibility bridge.
 - GPU acceleration: no DRI3 Xvfb patch, no NVIDIA ICD shims. `/dev/dri` permission handling is kept
   so pixelflux can still pick a render node if you pass one in.
+
+## Theming
+
+Both Wayland images ship Catppuccin Mocha: JetBrainsMono Nerd Font, Papirus
+icons and Catppuccin cursors, from a shared `themePackages` list so the two
+cannot drift apart. Seeded configs cover foot, fuzzel and mako.
+
+The niri image keeps noctalia-shell for bar, launcher, notifications and
+wallpaper. The Hyprland image uses the conventional stack instead (waybar,
+fuzzel, mako, swaybg) with a generated gradient wallpaper.
+
+**Everything is tuned for software rendering.** Blur is off in both images: it
+is by far the most expensive effect when llvmpipe draws every frame and x264
+encodes it for the browser. Rounded corners, gradient borders and shadows are
+close to free and carry the look on their own. Animations are short on purpose,
+because every intermediate frame is one more frame to encode and ship.
+
+## Hyprland needs a render node
+
+The Hyprland image does **not** start without a GPU:
+
+```
+what():  CBackend::create() failed!
+```
+
+aquamarine allocates its buffers through GBM, so with no render node there is
+no backend, even with `WAYLAND_DISPLAY` pointing at pixelflux's compositor.
+niri survives the same conditions because Smithay's winit backend falls back to
+software rendering (`error getting EGL device render node`, then Pixman).
+
+Pass a render node in (`--device /dev/dri/renderD128`, or `DRI_NODE`) and
+Hyprland works. The niri and i3 images have no such requirement.
