@@ -44,6 +44,16 @@
 
           mkSelkiesImage = self.callPackage ./nix/image.nix { };
 
+          # Shared look: one font with glyph coverage for the bars, one icon
+          # theme, one cursor theme. Kept in a single list so the niri and
+          # Hyprland images cannot drift apart visually.
+          themePackages = with final; [
+            nerd-fonts.jetbrains-mono
+            papirus-icon-theme
+            catppuccin-cursors
+            adwaita-icon-theme
+          ];
+
           # linuxserver/baseimage-selkies equivalent: openbox + st/xterm.
           image-base = self.mkSelkiesImage {
             name = "selkies-nix-base";
@@ -79,9 +89,13 @@
             # (same index linuxserver uses for nested sway).
             waylandSocketIndex = 2;
             startwm = ./rootfs/defaults/startwm-niri.sh;
-            configTemplates = { niri = ./rootfs/config/niri; foot = ./rootfs/config/foot; };
+            configTemplates = {
+              niri = ./rootfs/config/niri;
+              foot = ./rootfs/config/foot;
+              fuzzel = ./rootfs/config/fuzzel;
+            };
             extraEnv = [ "TERMINAL=foot" "XDG_CURRENT_DESKTOP=niri" ];
-            extraPackages = with final; [
+            extraPackages = (with final; [
               niri
               noctalia-shell
               xwayland-satellite
@@ -93,7 +107,45 @@
               chromium
               self.chromiumWrapped
               (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
+            ]) ++ self.themePackages;
+          };
+
+          # Hyprland + waybar, nested the same way niri is. Where the niri image
+          # leans on noctalia-shell for bar/launcher/notifications/wallpaper,
+          # this one uses the conventional Hyprland stack: waybar, fuzzel, mako
+          # and swaybg. Same Catppuccin Mocha palette in both.
+          image-webtop-hyprland = self.mkSelkiesImage {
+            name = "selkies-nix-webtop-hyprland";
+            title = "Nix Hyprland";
+            wayland = true;
+            waylandSocketIndex = 2;
+            startwm = ./rootfs/defaults/startwm-hyprland.sh;
+            configTemplates = {
+              hypr = ./rootfs/config/hypr;
+              waybar = ./rootfs/config/waybar;
+              foot = ./rootfs/config/foot;
+              fuzzel = ./rootfs/config/fuzzel;
+              mako = ./rootfs/config/mako;
+            };
+            extraEnv = [
+              "TERMINAL=foot"
+              "XDG_CURRENT_DESKTOP=Hyprland"
+              "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
+              "XCURSOR_SIZE=24"
             ];
+            extraPackages = (with final; [
+              hyprland
+              waybar
+              mako
+              swaybg
+              fuzzel
+              foot
+              xwayland-satellite
+              nautilus
+              chromium
+              self.chromiumWrapped
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
+            ]) ++ self.themePackages;
           };
 
           # Mirrors linuxserver's /usr/bin/chromium wrapper (plus Wayland detection).
@@ -119,7 +171,7 @@
       packages = forAllSystems (pkgs: {
         inherit (pkgs.selkiesPackages)
           selkies selkies-web selkies-addons pixelflux pcmflux nginx-selkies
-          image-base image-webtop-i3 image-webtop-niri;
+          image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland;
         default = pkgs.selkiesPackages.image-webtop-i3;
       });
 

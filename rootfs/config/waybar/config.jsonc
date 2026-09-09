@@ -1,0 +1,38 @@
+// Waybar for the Hyprland webtop. One bar, no tray clutter, no heavy modules.
+{
+  "layer": "top",
+  "position": "top",
+  "height": 34,
+  "margin-top": 8,
+  "margin-left": 12,
+  "margin-right": 12,
+  "spacing": 6,
+
+  "modules-left": ["hyprland/workspaces", "hyprland/window"],
+  "modules-center": ["clock"],
+  "modules-right": ["cpu", "memory", "pulseaudio", "tray"],
+
+  "hyprland/workspaces": {
+    "format": "{icon}",
+    "on-click": "activate",
+    "format-icons": {
+      "1": "󰎤", "2": "󰎧", "3": "󰎪", "4": "󰎭", "5": "󰎱",
+      "default": "󰧞", "active": "󰮯"
+    }
+  },
+  "hyprland/window": { "format": "{title}", "max-length": 48, "separate-outputs": true },
+  "clock": {
+    "format": "󰥔  {:%H:%M}",
+    "format-alt": "󰃭  {:%a %d %b}",
+    "tooltip-format": "<tt>{calendar}</tt>"
+  },
+  "cpu":    { "format": "󰻠  {usage}%", "interval": 5 },
+  "memory": { "format": "󰍛  {percentage}%", "interval": 5 },
+  "pulseaudio": {
+    "format": "{icon}  {volume}%",
+    "format-muted": "󰝟  muted",
+    "format-icons": { "default": ["󰕿", "󰖀", "󰕾"] },
+    "on-click": "pactl set-sink-mute @DEFAULT_SINK@ toggle"
+  },
+  "tray": { "spacing": 8 }
+}

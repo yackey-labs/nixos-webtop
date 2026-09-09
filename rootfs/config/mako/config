@@ -1,0 +1,18 @@
+# Catppuccin Mocha notifications. mako is ~1MB resident.
+font=JetBrainsMono Nerd Font 10
+background-color=#1e1e2eee
+text-color=#cdd6f4
+border-color=#cba6f7
+progress-color=over #313244
+border-size=2
+border-radius=12
+padding=14
+margin=12
+default-timeout=5000
+max-visible=4
+anchor=top-right
+layer=overlay
+
+[urgency=critical]
+border-color=#f38ba8
+default-timeout=0
