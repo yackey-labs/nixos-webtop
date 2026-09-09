@@ -127,8 +127,8 @@ Selkies sidebar's keyboard-lock toggle or remapping to avoid the host grabbing t
 
 - linuxserver's labwc-based Wayland desktop (patched labwc/wlroots, selkies-desktop).
 - Docker-in-Docker (`svc-docker`), proot-apps, pelorus accessibility bridge.
-- GPU acceleration: no DRI3 Xvfb patch, no NVIDIA ICD shims. `/dev/dri` permission handling is kept
-  so pixelflux can still pick a render node if you pass one in.
+- GPU acceleration: no DRI3 Xvfb patch. NVIDIA EGL/GBM shims ARE wired up now (see below);
+  `/dev/dri` permission handling is kept so pixelflux can pick a render node if you pass one in.
 
 ## Theming
 
@@ -161,3 +161,43 @@ software rendering (`error getting EGL device render node`, then Pixman).
 
 Pass a render node in (`--device /dev/dri/renderD128`, or `DRI_NODE`) and
 Hyprland works. The niri and i3 images have no such requirement.
+
+## NVIDIA in a Nix image
+
+The NVIDIA container toolkit injects the host driver into `/usr/local/lib`, which
+a Nix-built image does not search — its GL stack is `/run/opengl-driver/lib` and
+carries Mesa only. The `10_nvidia.json` ICD the toolkit drops in names
+`libEGL_nvidia.so.0` with no path, so the loader never finds it and rendering
+silently falls back to software.
+
+`rootfs/init` now detects that and wires three things, because a library path
+alone is not enough:
+
+1. `LD_LIBRARY_PATH` so `libEGL_nvidia.so.0` resolves
+2. `GBM_BACKENDS_PATH` pointing at a shim dir, with a `nvidia-drm_gbm.so`
+   symlink — GBM looks for that name, the toolkit injects
+   `libnvidia-egl-gbm.so.1`
+3. `__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS` with a generated
+   `15_nvidia_gbm.json`, which the toolkit does not always provide
+
+None of this runs unless `/usr/local/lib/libEGL_nvidia.so.0` exists, so the
+software path is unchanged on hosts without an NVIDIA GPU.
+
+## Known upstream limit: Hyprland and wl_compositor v6
+
+The Hyprland image starts and then dies:
+
+```
+wl_registry#2: error 0: invalid version for global wl_compositor (2):
+              expected at most 5, got 6
+what():  CBackend::create() failed!
+```
+
+Hyprland's aquamarine binds `wl_compositor` at version 6; pixelflux advertises
+5. pixelflux calls Smithay's `CompositorState::new`, and the Smithay revision it
+already pins also provides `CompositorState::new_v6`, so upstream the fix is one
+word. Note Smithay's own caveat: v6 requires `send_surface_state` for clients
+using non-default scaling, so it is not a free bump.
+
+Nothing in this flake can work around it — pixelflux is consumed as a prebuilt
+wheel (there is no sdist), so changing it means building it from source.
