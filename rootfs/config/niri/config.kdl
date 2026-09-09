@@ -120,7 +120,7 @@ input {
 // https://niri-wm.github.io/niri/Configuration:-Layout
 layout {
     // Set gaps around windows in logical pixels.
-    gaps 16
+    gaps 12
 
     // When to center a column when changing focus, options are:
     // - "never", default behavior, focusing an off-screen column will keep at the left
@@ -168,7 +168,7 @@ layout {
         // off
 
         // How many logical pixels the ring extends out from the windows.
-        width 4
+        width 2
 
         // Colors can be set in a variety of ways:
         // - CSS named colors: "red"
@@ -176,13 +176,15 @@ layout {
         // - CSS-like notation: "rgb(255, 127, 0)", rgba(), hsl() and a few others.
 
         // Color of the ring on the active monitor.
-        active-color "#7fc8ff"
+        // Catppuccin Mocha: mauve -> pink at 45 degrees, measured across the
+        // whole workspace so the gradient stays continuous as columns scroll.
+        active-gradient from="#cba6f7" to="#f5c2e7" angle=45 relative-to="workspace-view"
 
         // Color of the ring on inactive monitors.
         //
         // The focus ring only draws around the active window, so the only place
         // where you can see its inactive-color is on other monitors.
-        inactive-color "#505050"
+        inactive-color "#313244"
 
         // You can also use gradients. They take precedence over solid colors.
         // Gradients are rendered the same as CSS linear-gradient(angle, from, to).
@@ -311,8 +313,10 @@ animations {
     // Uncomment to turn off all animations.
     // off
 
-    // Slow down all animations by this factor. Values below 1 speed them up instead.
-    // slowdown 3.0
+    // Faster than default on purpose. Every intermediate animation frame is a
+    // frame x264 must encode and push down the wire, so long floaty transitions
+    // cost real bandwidth and look worse over a stream, not better.
+    slowdown 0.7
 }
 
 // Window rules let you adjust behavior for individual windows.
@@ -352,7 +356,9 @@ window-rule {
 
 // Example: enable rounded corners for all windows.
 // (This example rule is commented out with a "/-" in front.)
-/-window-rule {
+// Rounded corners on every window. Cheap even under software rendering,
+// unlike blur, which this image deliberately never uses.
+window-rule {
     geometry-corner-radius 12
     clip-to-geometry true
 }

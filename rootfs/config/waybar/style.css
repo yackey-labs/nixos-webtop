@@ -1,0 +1,44 @@
+/* Catppuccin Mocha. Floating pill bar — cheap to composite, reads as "riced". */
+* {
+  font-family: "JetBrainsMono Nerd Font";
+  font-size: 13px;
+  border: none;
+  border-radius: 0;
+  min-height: 0;
+}
+
+window#waybar {
+  background: transparent;
+  color: #cdd6f4;
+}
+
+.modules-left, .modules-center, .modules-right {
+  background: rgba(30, 30, 46, 0.86);
+  border: 2px solid rgba(203, 166, 247, 0.55);
+  border-radius: 14px;
+  padding: 0 10px;
+}
+
+#workspaces button {
+  padding: 0 8px;
+  color: #6c7086;
+  background: transparent;
+  transition: color 150ms ease;
+}
+#workspaces button.active { color: #cba6f7; }
+#workspaces button:hover  { color: #f5c2e7; background: transparent; }
+
+#window { padding: 0 10px; color: #bac2de; }
+#clock  { padding: 0 14px; color: #cba6f7; font-weight: bold; }
+
+#cpu        { padding: 0 8px; color: #a6e3a1; }
+#memory     { padding: 0 8px; color: #f9e2af; }
+#pulseaudio { padding: 0 8px; color: #89b4fa; }
+#pulseaudio.muted { color: #f38ba8; }
+#tray       { padding: 0 6px; }
+
+tooltip {
+  background: rgba(24, 24, 37, 0.96);
+  border: 2px solid #cba6f7;
+  border-radius: 12px;
+}
