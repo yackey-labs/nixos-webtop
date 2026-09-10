@@ -11,8 +11,9 @@
 #
 # pixelflux still runs and owns wayland-1 (it is what Selkies streams). This
 # script starts a SECOND compositor via GStreamer, which takes the next free
-# socket, and points Hyprland at that. Streaming still shows pixelflux's
-# surface; this build exists to answer whether Hyprland starts at all.
+# socket, and points Hyprland at that. waylandsink then renders that nested
+# session back into pixelflux's surface as a fullscreen client, so Selkies
+# streams it unchanged.
 ulimit -c 0
 export XKB_DEFAULT_LAYOUT="${XKB_DEFAULT_LAYOUT:-us}"
 export XDG_CURRENT_DESKTOP=Hyprland
@@ -52,7 +53,31 @@ before="$(ls "${XDG_RUNTIME_DIR}"/wayland-* 2>/dev/null | tr '\n' ' ')"
 # sink, and waylanddisplaysrc handles them (imp.rs: NavigationEvent::MouseMove,
 # KeyPress, ...). So clicks and keys land in Hyprland rather than stopping at
 # the surface showing it.
-gst-launch-1.0 waylanddisplaysrc render-node="$RENDER_NODE" \
+# The caps between the source and the first queue are NOT optional. Without
+# them waylanddisplaysrc never negotiates a size: it creates its output as
+#   Creating new Output name="HEADLESS-1" physical=PhysicalProperties {
+#       size: Size { w: 0, h: 0 }, make: "Virtual", model: "Wolf" }
+# and Hyprland, nested in it, reports `1x1@60.00` with zero windows mapped --
+# swaybg, waybar, mako and xwayland-satellite all run but map nothing. The
+# allocator then segfaults on the first `Creating DMA buffer`, and downstream
+# waylandsink is handed a 65536-byte system-memory buffer it cannot wrap:
+#   waylandsink0: buffer ... size 65536 ... flags 0x4000 cannot have a wl_buffer
+# Visible result is a white rectangle on a black field. games-on-whales' Wolf
+# sets the same caps on this element for the same reason.
+WD_WIDTH="${WD_WIDTH:-1920}"
+WD_HEIGHT="${WD_HEIGHT:-1080}"
+WD_FPS="${WD_FPS:-60}"
+echo "[hypr-gst] pinning virtual output to ${WD_WIDTH}x${WD_HEIGHT}@${WD_FPS}"
+
+# --no-fault matters as much as the caps. gst-launch installs a fault handler
+# that, on SIGSEGV, tries to exec gdb and -- when gdb is absent, as it is here --
+# parks the process spinning forever:
+#   Caught SIGSEGV / exec gdb failed: No such file or directory / Spinning.
+# The PID stays alive, so s6 sees a healthy service and never restarts it, and
+# the pod sits 1/1 Ready while rendering nothing. With --no-fault the crash
+# actually kills the process and the supervision below takes over.
+gst-launch-1.0 --no-fault waylanddisplaysrc render-node="$RENDER_NODE" \
+  ! video/x-raw,width=${WD_WIDTH},height=${WD_HEIGHT},framerate=${WD_FPS}/1 \
   ! queue max-size-buffers=3 leaky=downstream ! videoconvert \
   ! queue max-size-buffers=3 leaky=downstream ! waylandsink fullscreen=true \
   > "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>&1 &
@@ -79,4 +104,25 @@ fi
 
 echo "[hypr-gst] compositor is on $SOCK; starting Hyprland nested in it"
 export WAYLAND_DISPLAY="$SOCK"
-exec Hyprland
+
+# Do NOT exec Hyprland. The compositor it is nested in is a sibling process, and
+# if that dies Hyprland keeps running against a dead socket -- which is exactly
+# how this failed silently before: gst was gone, Hyprland was up, the service
+# looked healthy. Supervise both and exit non-zero the moment either goes, so s6
+# tears the session down and restarts it as a unit.
+Hyprland &
+HYPR_PID=$!
+
+wait -n "$GST_PID" "$HYPR_PID"
+STATUS=$?
+
+if kill -0 "$GST_PID" 2>/dev/null; then
+  echo "[hypr-gst] Hyprland exited (status $STATUS); stopping compositor"
+  kill "$GST_PID" 2>/dev/null
+else
+  echo "[hypr-gst] compositor died (status $STATUS); stopping Hyprland. Last log:"
+  tail -30 "${XDG_RUNTIME_DIR}/gst-wayland-display.log"
+  kill "$HYPR_PID" 2>/dev/null
+fi
+wait
+exit "$STATUS"
