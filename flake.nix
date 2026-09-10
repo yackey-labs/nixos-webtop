@@ -16,6 +16,36 @@
     in
     {
       overlays.default = final: prev: {
+        # GStreamer's Wayland GL window has never forwarded keyboard input: in
+        # gstglwindow_wayland_egl.c the whole WL_SEAT_CAPABILITY_KEYBOARD block
+        # sits inside `#if 0`, referencing a `keyboard_listener` that is never
+        # defined and an `input` variable that no longer exists. Pointer input
+        # is wired up right next to it, which is why the nested Hyprland desktop
+        # had a working mouse and a completely dead keyboard.
+        #
+        # waylanddisplaysrc turns GstNavigation KeyPress/KeyRelease into evdev
+        # scancodes via a table keyed on X keysym names ("Escape", "exclam",
+        # "parenleft"), which is exactly what xkb_keysym_get_name produces, so
+        # the patch binds wl_keyboard, tracks the xkb keymap and modifier state,
+        # and emits those names through gst_gl_window_send_key_event.
+        #
+        # overrideScope rather than a plain attribute override so every package
+        # in the set links the same libgstgl; two copies in one image would be a
+        # symlink-farm conflict waiting to happen.
+        #
+        # Exposed as its OWN attribute rather than replacing gst_all_1. Patching
+        # gst_all_1 overlay-wide rebuilds everything that touches GStreamer
+        # anywhere in nixpkgs -- the first attempt dragged in ungoogled-chromium,
+        # libadwaita, nautilus and zenity, ran for 51 minutes and then failed on
+        # zenity, a package no image here even uses for video. Only the
+        # hyprland-gst image consumes this set.
+        gstWithWaylandKeyboard = prev.gst_all_1.overrideScope (gstFinal: gstPrev: {
+          gst-plugins-base = gstPrev.gst-plugins-base.overrideAttrs (old: {
+            patches = (old.patches or [ ]) ++ [ ./nix/patches/gst-gl-wayland-keyboard.patch ];
+            buildInputs = (old.buildInputs or [ ]) ++ [ final.libxkbcommon ];
+          });
+        });
+
         selkiesPackages = lib.makeScope final.newScope (self: {
           # Pinned upstream sources (same commit linuxserver builds from).
           selkiesSrc = final.fetchFromGitHub {
@@ -44,7 +74,8 @@
           # GStreamer source element wrapping a Smithay compositor that binds
           # wl_compositor v6, unlike pixelflux's v5. See nix/gst-wayland-display.nix.
           gst-wayland-display = self.callPackage ./nix/gst-wayland-display.nix {
-            inherit (final) gst_all_1 wayland wayland-protocols libxkbcommon
+            gst_all_1 = final.gstWithWaylandKeyboard;
+            inherit (final) wayland wayland-protocols libxkbcommon
                             libinput udev libdrm libgbm libGL seatd pixman;
           };
 
@@ -211,10 +242,14 @@
               # plugins -- so libgstcoreelements.so was absent and the pipeline
               # died with `no element "fakesink"` while 109 other plugins from
               # base/good were present and waylanddisplaysrc inspected fine.
-              gst_all_1.gstreamer.out
-              gst_all_1.gstreamer
-              gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
-              gst_all_1.gst-plugins-bad   # waylandsink
+              gstWithWaylandKeyboard.gstreamer.out
+              gstWithWaylandKeyboard.gstreamer
+              gstWithWaylandKeyboard.gst-plugins-base
+              gstWithWaylandKeyboard.gst-plugins-good
+              # gst-plugins-bad was here only for waylandsink, which is gone --
+              # it cannot forward input, so the pipeline uses glimagesink from
+              # -base instead. Dropping it also keeps the rebuild triggered by
+              # the -base patch above down to a sane size.
               (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
               (writeShellScriptBin "dev-setup" (builtins.readFile ./rootfs/defaults/dev-setup.sh))
             ]) ++ [ self.gst-wayland-display ] ++ self.themePackages;
