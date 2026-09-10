@@ -53,6 +53,20 @@ before="$(ls "${XDG_RUNTIME_DIR}"/wayland-* 2>/dev/null | tr '\n' ' ')"
 # sink, and waylanddisplaysrc handles them (imp.rs: NavigationEvent::MouseMove,
 # KeyPress, ...). So clicks and keys land in Hyprland rather than stopping at
 # the surface showing it.
+#
+# That is only true of a sink that actually ORIGINATES those events, which
+# waylandsink does not -- it implements GstVideoOverlay and nothing else, never
+# binds wl_seat, and so never turns the pointer and keyboard input its surface
+# receives into navigation events. With waylandsink the desktop rendered
+# perfectly and was completely dead: hyprctl cursorpos pinned at 960,540
+# forever, no keybinds, no clicks. Wolf does not hit this because it injects
+# input straight into the compositor from Moonlight instead of through a sink.
+#
+# glimagesink does implement GstNavigation, and gst-gl's Wayland backend binds
+# wl_seat and adds both a wl_pointer and a wl_keyboard listener
+# (gstglwindow_wayland_egl.c), feeding gst_gl_window_send_mouse_event /
+# send_key_event. That is exactly the event stream waylanddisplaysrc is already
+# written to consume.
 # The caps between the source and the first queue are NOT optional. Without
 # them waylanddisplaysrc never negotiates a size: it creates its output as
 #   Creating new Output name="HEADLESS-1" physical=PhysicalProperties {
@@ -76,10 +90,15 @@ echo "[hypr-gst] pinning virtual output to ${WD_WIDTH}x${WD_HEIGHT}@${WD_FPS}"
 # The PID stays alive, so s6 sees a healthy service and never restarts it, and
 # the pod sits 1/1 Ready while rendering nothing. With --no-fault the crash
 # actually kills the process and the supervision below takes over.
+# videoconvert is kept ahead of the sink deliberately. glimagesink embeds
+# glupload/glcolorconvert and could take the DMA-BUF directly, which would be
+# the faster path, but the converted route is the one already proven to render
+# here -- correctness of the input path first, zero-copy as a follow-up.
 gst-launch-1.0 --no-fault waylanddisplaysrc render-node="$RENDER_NODE" \
   ! video/x-raw,width=${WD_WIDTH},height=${WD_HEIGHT},framerate=${WD_FPS}/1 \
   ! queue max-size-buffers=3 leaky=downstream ! videoconvert \
-  ! queue max-size-buffers=3 leaky=downstream ! waylandsink fullscreen=true \
+  ! queue max-size-buffers=3 leaky=downstream \
+  ! glimagesink handle-events=true force-aspect-ratio=false \
   > "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>&1 &
 GST_PID=$!
 
