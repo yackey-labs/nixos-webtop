@@ -53,7 +53,8 @@ before="$(ls "${XDG_RUNTIME_DIR}"/wayland-* 2>/dev/null | tr '\n' ' ')"
 # KeyPress, ...). So clicks and keys land in Hyprland rather than stopping at
 # the surface showing it.
 gst-launch-1.0 waylanddisplaysrc render-node="$RENDER_NODE" \
-  ! videoconvert ! waylandsink fullscreen=true \
+  ! queue max-size-buffers=3 leaky=downstream ! videoconvert \
+  ! queue max-size-buffers=3 leaky=downstream ! waylandsink fullscreen=true \
   > "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>&1 &
 GST_PID=$!
 
