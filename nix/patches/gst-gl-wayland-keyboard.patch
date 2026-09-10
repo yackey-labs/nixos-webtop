@@ -1,0 +1,184 @@
+--- a/gst-libs/gst/gl/wayland/gstglwindow_wayland_egl.h
++++ b/gst-libs/gst/gl/wayland/gstglwindow_wayland_egl.h
+@@ -61,6 +61,11 @@
+ 
+   gdouble pointer_x;
+   gdouble pointer_y;
++
++  /* xkb state needed to turn evdev keycodes into keysym names */
++  struct xkb_context     *xkb_context;
++  struct xkb_keymap      *xkb_keymap;
++  struct xkb_state       *xkb_state;
+ };
+ 
+ struct window {
+--- a/gst-libs/gst/gl/wayland/gstglwindow_wayland_egl.c
++++ b/gst-libs/gst/gl/wayland/gstglwindow_wayland_egl.c
+@@ -29,6 +29,8 @@
+ #include <sys/mman.h>
+ #include <unistd.h>
+ 
++#include <xkbcommon/xkbcommon.h>
++
+ #include "wayland_event_source.h"
+ 
+ #include "../gstgl_fwd.h"
+@@ -147,6 +149,109 @@
+ };
+ 
+ static void
++keyboard_handle_keymap (void *data, struct wl_keyboard *keyboard,
++    uint32_t format, int fd, uint32_t size)
++{
++  GstGLWindowWaylandEGL *window_egl = data;
++  struct display *display = &window_egl->display;
++  char *map_str;
++
++  if (format != WL_KEYBOARD_KEYMAP_FORMAT_XKB_V1) {
++    close (fd);
++    return;
++  }
++
++  map_str = mmap (NULL, size, PROT_READ, MAP_PRIVATE, fd, 0);
++  if (map_str == MAP_FAILED) {
++    close (fd);
++    return;
++  }
++
++  if (!display->xkb_context)
++    display->xkb_context = xkb_context_new (XKB_CONTEXT_NO_FLAGS);
++
++  g_clear_pointer (&display->xkb_state, xkb_state_unref);
++  g_clear_pointer (&display->xkb_keymap, xkb_keymap_unref);
++
++  if (display->xkb_context) {
++    display->xkb_keymap = xkb_keymap_new_from_string (display->xkb_context,
++        map_str, XKB_KEYMAP_FORMAT_TEXT_V1, XKB_KEYMAP_COMPILE_NO_FLAGS);
++    if (display->xkb_keymap)
++      display->xkb_state = xkb_state_new (display->xkb_keymap);
++  }
++
++  munmap (map_str, size);
++  close (fd);
++}
++
++static void
++keyboard_handle_enter (void *data, struct wl_keyboard *keyboard,
++    uint32_t serial, struct wl_surface *surface, struct wl_array *keys)
++{
++}
++
++static void
++keyboard_handle_leave (void *data, struct wl_keyboard *keyboard,
++    uint32_t serial, struct wl_surface *surface)
++{
++}
++
++static void
++keyboard_handle_key (void *data, struct wl_keyboard *keyboard,
++    uint32_t serial, uint32_t time, uint32_t key, uint32_t state)
++{
++  GstGLWindowWaylandEGL *window_egl = data;
++  struct display *display = &window_egl->display;
++  GstGLWindow *window = GST_GL_WINDOW (window_egl);
++  xkb_keysym_t sym;
++  char name[64];
++
++  if (!display->xkb_state)
++    return;
++
++  /* wl_keyboard reports evdev keycodes; xkbcommon expects them offset by 8. */
++  sym = xkb_state_key_get_one_sym (display->xkb_state, key + 8);
++  if (sym == XKB_KEY_NoSymbol)
++    return;
++  if (xkb_keysym_get_name (sym, name, sizeof (name)) <= 0)
++    return;
++
++  gst_gl_window_send_key_event (window,
++      state == WL_KEYBOARD_KEY_STATE_PRESSED ? "key-press" : "key-release",
++      name);
++}
++
++static void
++keyboard_handle_modifiers (void *data, struct wl_keyboard *keyboard,
++    uint32_t serial, uint32_t mods_depressed, uint32_t mods_latched,
++    uint32_t mods_locked, uint32_t group)
++{
++  GstGLWindowWaylandEGL *window_egl = data;
++  struct display *display = &window_egl->display;
++
++  if (!display->xkb_state)
++    return;
++
++  xkb_state_update_mask (display->xkb_state, mods_depressed, mods_latched,
++      mods_locked, 0, 0, group);
++}
++
++static void
++keyboard_handle_repeat_info (void *data, struct wl_keyboard *keyboard,
++    int32_t rate, int32_t delay)
++{
++}
++
++static const struct wl_keyboard_listener keyboard_listener = {
++  keyboard_handle_keymap,
++  keyboard_handle_enter,
++  keyboard_handle_leave,
++  keyboard_handle_key,
++  keyboard_handle_modifiers,
++  keyboard_handle_repeat_info,
++};
++
++static void
+ seat_handle_capabilities (void *data, struct wl_seat *seat,
+     enum wl_seat_capability caps)
+ {
+@@ -161,16 +266,15 @@
+     wl_pointer_destroy (display->pointer);
+     display->pointer = NULL;
+   }
+-#if 0
+-  if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !input->keyboard) {
+-    input->keyboard = wl_seat_get_keyboard (seat);
+-    wl_keyboard_set_user_data (input->keyboard, input);
+-    wl_keyboard_add_listener (input->keyboard, &keyboard_listener, input);
+-  } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && input->keyboard) {
+-    wl_keyboard_destroy (input->keyboard);
+-    input->keyboard = NULL;
+-  }
+-#endif
++  if ((caps & WL_SEAT_CAPABILITY_KEYBOARD) && !display->keyboard) {
++    display->keyboard = wl_seat_get_keyboard (seat);
++    wl_keyboard_set_user_data (display->keyboard, window_egl);
++    wl_keyboard_add_listener (display->keyboard, &keyboard_listener,
++        window_egl);
++  } else if (!(caps & WL_SEAT_CAPABILITY_KEYBOARD) && display->keyboard) {
++    wl_keyboard_destroy (display->keyboard);
++    display->keyboard = NULL;
++  }
+ }
+ 
+ static void
+--- a/gst-libs/gst/gl/meson.build
++++ b/gst-libs/gst/gl/meson.build
+@@ -654,8 +654,9 @@
+     wayland_egl_dep = dependency('wayland-egl', version : '>= 1.0', required : false)
+     wayland_protocols_dep = dependency('wayland-protocols', version : '>= 1.15', required : false)
+     wayland_scanner = find_program('wayland-scanner', required: false)
+-
+-    if wayland_client_dep.found() and wayland_cursor_dep.found() and wayland_egl_dep.found() and wayland_protocols_dep.found() and wayland_scanner.found()
++    xkbcommon_dep = dependency('xkbcommon', version : '>= 0.5', required : false)
++
++    if wayland_client_dep.found() and wayland_cursor_dep.found() and wayland_egl_dep.found() and wayland_protocols_dep.found() and wayland_scanner.found() and xkbcommon_dep.found()
+       # Generate the XDG shell interface
+       wayland_protocols_basedir = wayland_protocols_dep.get_variable('pkgdatadir')
+       xdg_shell_xml_spec = join_paths(wayland_protocols_basedir, 'stable', 'xdg-shell', 'xdg-shell.xml')
+@@ -685,7 +686,7 @@
+       ])
+ 
+       glconf.set('GST_GL_HAVE_WINDOW_WAYLAND', 1)
+-      gl_winsys_deps += [wayland_client_dep, wayland_cursor_dep, wayland_egl_dep]
++      gl_winsys_deps += [wayland_client_dep, wayland_cursor_dep, wayland_egl_dep, xkbcommon_dep]
+       enabled_gl_winsys += 'wayland'
+     else
+       if need_win_wayland == 'yes'
