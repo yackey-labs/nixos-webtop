@@ -151,7 +151,7 @@ for dev in $(find /dev/dri -type c 2>/dev/null); do
     log "added abc to group $gname for $dev"
   fi
 done
-if [ -e /dev/dri/renderD128 ] && [ ! -e /dev/dri/renderD129 ] && [ -z "${DRI_NODE+x}" ] && ! command -v nvidia-smi >/dev/null 2>&1; then
+if [ -e /dev/dri/renderD128 ] && [ ! -e /dev/dri/renderD129 ] && [ -z "${DRI_NODE+x}" ]; then
   export DRI_NODE=/dev/dri/renderD128
 fi
 
@@ -160,19 +160,38 @@ fi
 # path a Nix-built image does not search: its GL stack lives under
 # /run/opengl-driver/lib and carries Mesa only. The EGL ICD the toolkit drops in
 # (10_nvidia.json) names "libEGL_nvidia.so.0" with no path, so the loader never
-# finds it and everything silently falls back to software:
+# finds it and everything silently falls back to software.
 #
-#   [Wayland] GPU Initialization failed: Failed to allocate GBM buffer.
-#             Falling back to Software Renderer (Pixman).
-#   niri::backend::winit: error getting EGL device render node
+# Four things have to be true, and a library path alone is not enough:
 #
-# Three things have to be true, and a library path alone is not enough:
-#   1. libEGL_nvidia.so.0 is loadable            -> LD_LIBRARY_PATH
-#   2. GBM can find the nvidia backend           -> GBM_BACKENDS_PATH, and the
-#      backend must be named nvidia-drm_gbm.so, which is not what the toolkit
-#      injects (libnvidia-egl-gbm.so.1), so it needs a symlink
-#   3. EGL knows about the external GBM platform -> an egl_external_platform.d
-#      entry, which the toolkit does not always inject
+#   1. libEGL_nvidia.so.0 is loadable   -> LD_LIBRARY_PATH
+#
+#   2. GBM can find the nvidia backend  -> GBM_BACKENDS_PATH pointing at a
+#      directory holding a backend named "nvidia-drm_gbm.so".
+#
+#      That backend is libnvidia-allocator.so.1 -- it is the library exporting
+#      gbmint_get_backend, which is the symbol GBM dlsym()s. It is emphatically
+#      NOT libnvidia-egl-gbm.so.1, which exports loadEGLExternalPlatform and is
+#      the EGL external platform for item 3 below. Pointing nvidia-drm_gbm.so at
+#      libnvidia-egl-gbm.so.1 fails in a maximally confusing way: EGL and the GL
+#      renderer both come up on the NVIDIA GPU, and only buffer allocation dies,
+#      because GBM rejects the backend for missing gbmint_get_backend and quietly
+#      falls through to Mesa's dri_gbm.so on an NVIDIA render node --
+#
+#        [Wayland] Initializing GL Renderer using device: /dev/dri/renderD128
+#        [Wayland] GPU Initialization failed: Failed to allocate GBM buffer.
+#                  Falling back to Software Renderer (Pixman).
+#
+#      Rather than hardcode a library name, take the toolkit's own answer: it
+#      already drops a correct /usr/local/lib/gbm/nvidia-drm_gbm.so symlink.
+#
+#   3. EGL knows about the external GBM platform     -> 15_nvidia_gbm.json
+#   4. EGL knows about the external Wayland platform -> 10_nvidia_wayland.json
+#
+#      Both are egl_external_platform.d entries that the toolkit does not inject
+#      (on Ubuntu they ship in libnvidia-egl-wayland/-gbm, which a Nix image has
+#      no equivalent of). Without item 4, EGL_WL_bind_wayland_display is missing
+#      and pixelflux cannot bind EGL to the Wayland display.
 if [ -e /usr/local/lib/libEGL_nvidia.so.0 ]; then
   log "nvidia driver detected in /usr/local/lib; wiring EGL/GBM shims"
   export LD_LIBRARY_PATH="/usr/local/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
@@ -185,23 +204,40 @@ if [ -e /usr/local/lib/libEGL_nvidia.so.0 ]; then
   # before any of this ran:
   #   MESA-LOADER: failed to open dri: /run/nvidia-shim/gbm/dri_gbm.so
   #   [Wayland] GPU Initialization failed: Failed to create Raw GBM Device.
-  for mesa_backend in /run/opengl-driver/lib/gbm/*.so; do
-    [ -e "$mesa_backend" ] || continue
-    ln -sf "$mesa_backend" "/run/nvidia-shim/gbm/$(basename "$mesa_backend")"
+  for backend in /run/opengl-driver/lib/gbm/*.so; do
+    [ -e "$backend" ] || continue
+    ln -sf "$backend" "/run/nvidia-shim/gbm/$(basename "$backend")"
   done
-  for lib in /usr/local/lib/libnvidia-egl-gbm.so.*; do
-    [ -e "$lib" ] || continue
-    ln -sf "$lib" /run/nvidia-shim/gbm/nvidia-drm_gbm.so
-    cat > /run/nvidia-shim/egl_external_platform.d/15_nvidia_gbm.json <<JSON
+
+  # NVIDIA's GBM backend, preferring the toolkit's own symlink over a guess.
+  gbm_backend=
+  for backend in /usr/local/lib/gbm/nvidia-drm_gbm.so /usr/local/lib/libnvidia-allocator.so.1; do
+    [ -e "$backend" ] || continue
+    gbm_backend=$(readlink -f "$backend")
+    break
+  done
+  if [ -n "$gbm_backend" ]; then
+    ln -sf "$gbm_backend" /run/nvidia-shim/gbm/nvidia-drm_gbm.so
+    log "nvidia gbm backend: $gbm_backend"
+  else
+    log "WARNING: no nvidia gbm backend found; rendering will fall back to software"
+  fi
+
+  # EGL external platforms: <priority>:<library>.
+  for platform in 15:libnvidia-egl-gbm.so.1 10:libnvidia-egl-wayland.so.1; do
+    prio=${platform%%:*}; soname=${platform#*:}
+    [ -e "/usr/local/lib/$soname" ] || continue
+    name=$(echo "$soname" | sed 's/^libnvidia-egl-/nvidia_/; s/\.so.*$//')
+    cat > "/run/nvidia-shim/egl_external_platform.d/${prio}_${name}.json" <<JSON
 {
     "file_format_version" : "1.0.0",
     "ICD" : {
-        "library_path" : "$lib"
+        "library_path" : "/usr/local/lib/$soname"
     }
 }
 JSON
-    break
   done
+
   export GBM_BACKENDS_PATH=/run/nvidia-shim/gbm
   export __EGL_EXTERNAL_PLATFORM_CONFIG_DIRS=/run/nvidia-shim/egl_external_platform.d
   chmod -R a+rX /run/nvidia-shim

@@ -127,8 +127,9 @@ Selkies sidebar's keyboard-lock toggle or remapping to avoid the host grabbing t
 
 - linuxserver's labwc-based Wayland desktop (patched labwc/wlroots, selkies-desktop).
 - Docker-in-Docker (`svc-docker`), proot-apps, pelorus accessibility bridge.
-- GPU acceleration: no DRI3 Xvfb patch. NVIDIA EGL/GBM shims ARE wired up now (see below);
-  `/dev/dri` permission handling is kept so pixelflux can pick a render node if you pass one in.
+- GPU acceleration on **X11**: no DRI3 Xvfb patch. The Wayland path is fully
+  accelerated on NVIDIA, including NVENC — see [NVIDIA in a Nix
+  image](#nvidia-in-a-nix-image).
 
 ## Theming
 
@@ -140,11 +141,13 @@ The niri image keeps noctalia-shell for bar, launcher, notifications and
 wallpaper. The Hyprland image uses the conventional stack instead (waybar,
 fuzzel, mako, swaybg) with a generated gradient wallpaper.
 
-**Everything is tuned for software rendering.** Blur is off in both images: it
-is by far the most expensive effect when llvmpipe draws every frame and x264
-encodes it for the browser. Rounded corners, gradient borders and shadows are
-close to free and carry the look on their own. Animations are short on purpose,
-because every intermediate frame is one more frame to encode and ship.
+**The theming is tuned for the software path**, which is still what you get
+without a GPU. Blur is off in both images: it is by far the most expensive
+effect when llvmpipe draws every frame and x264 encodes it for the browser.
+Rounded corners, gradient borders and shadows are close to free and carry the
+look on their own. Animations are short on purpose, because every intermediate
+frame is one more frame to encode and ship. On an NVIDIA host these constraints
+no longer bind, so turning blur back up is reasonable there.
 
 ## Hyprland needs a render node
 
@@ -164,24 +167,78 @@ Hyprland works. The niri and i3 images have no such requirement.
 
 ## NVIDIA in a Nix image
 
+Hardware rendering and NVENC both work. On a Quadro M1000M (Maxwell, driver
+580.178.04) under gpu-operator/CDI, the niri image reaches the same full
+hardware path as the upstream Ubuntu webtop:
+
+```
+[Wayland] Initializing GL Renderer using device: /dev/dri/renderD128
+[Wayland] Nvidia Encoder detected. Initializing NVENC...
+[NVENC]   Device 0: Quadro M1000M
+[NVENC] Bound to CUDA device via PCI Bus ID: 0000:01:00.0
+[Wayland] Decision: Zero-Copy path active.
+Stream settings active -> Mode: H264 (NVENC) FullFrame
+```
+
 The NVIDIA container toolkit injects the host driver into `/usr/local/lib`, which
 a Nix-built image does not search — its GL stack is `/run/opengl-driver/lib` and
 carries Mesa only. The `10_nvidia.json` ICD the toolkit drops in names
 `libEGL_nvidia.so.0` with no path, so the loader never finds it and rendering
 silently falls back to software.
 
-`rootfs/init` now detects that and wires three things, because a library path
-alone is not enough:
+`rootfs/init` detects that and wires four things, because a library path alone
+is not enough:
 
-1. `LD_LIBRARY_PATH` so `libEGL_nvidia.so.0` resolves
-2. `GBM_BACKENDS_PATH` pointing at a shim dir, with a `nvidia-drm_gbm.so`
-   symlink — GBM looks for that name, the toolkit injects
-   `libnvidia-egl-gbm.so.1`
-3. `__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS` with a generated
-   `15_nvidia_gbm.json`, which the toolkit does not always provide
+1. `LD_LIBRARY_PATH` so `libEGL_nvidia.so.0` resolves.
+2. `GBM_BACKENDS_PATH` pointing at a shim dir holding a `nvidia-drm_gbm.so`.
+   That name is what GBM looks for; `GBM_BACKENDS_PATH` **replaces** the default
+   search path rather than extending it, so the shim dir also carries symlinks
+   to Mesa's own backends, or Mesa can no longer find `dri_gbm.so`.
+3. `__EGL_EXTERNAL_PLATFORM_CONFIG_DIRS` with a generated `15_nvidia_gbm.json`
+   (→ `libnvidia-egl-gbm.so.1`), which the toolkit does not inject.
+4. …and, in the same directory, `10_nvidia_wayland.json`
+   (→ `libnvidia-egl-wayland.so.1`). Without it EGL has no
+   `EGL_WL_bind_wayland_display` and pixelflux logs
+   `Failed to bind EGL to Wayland Display`.
 
 None of this runs unless `/usr/local/lib/libEGL_nvidia.so.0` exists, so the
 software path is unchanged on hosts without an NVIDIA GPU.
+
+### The GBM backend is libnvidia-allocator, not libnvidia-egl-gbm
+
+This one cost a while, so it is worth stating plainly. The two libraries have
+confusingly similar names and completely different jobs:
+
+| library | exports | role |
+| --- | --- | --- |
+| `libnvidia-allocator.so.1` | `gbmint_get_backend` | the GBM backend — this is what `nvidia-drm_gbm.so` must point at |
+| `libnvidia-egl-gbm.so.1` | `loadEGLExternalPlatform` | the EGL external platform named by `15_nvidia_gbm.json` |
+
+Pointing `nvidia-drm_gbm.so` at `libnvidia-egl-gbm.so.1` fails in a maximally
+misleading way. EGL initialises on the NVIDIA GPU, the GL renderer initialises
+on the NVIDIA GPU, and only buffer allocation dies — because GBM `dlopen`s the
+backend, finds no `gbmint_get_backend`, rejects it, and quietly falls through to
+Mesa's `dri_gbm.so` on an NVIDIA render node:
+
+```
+[Wayland] Initializing GL Renderer using device: /dev/dri/renderD128
+[Wayland] GPU Initialization failed: Failed to allocate GBM buffer.
+          Falling back to Software Renderer (Pixman).
+```
+
+`rootfs/init` no longer guesses the name. The toolkit already drops a correct
+`/usr/local/lib/gbm/nvidia-drm_gbm.so` symlink, so the init resolves that and
+only falls back to `libnvidia-allocator.so.1` if it is absent.
+
+Two things that look like the problem but are not:
+
+- **`/dev/dri/card1` is mode 600 and root-owned**, and the desktop runs as `abc`.
+  It does not matter. NVIDIA's GBM path goes through the render node plus
+  `/dev/nvidia*`, all of which are `crw-rw-rw-`. The KMS card node is never
+  opened.
+- **`EGL_WL_bind_wayland_display` being unsupported** is not the EGLStreams
+  split resurfacing. It is just the missing `10_nvidia_wayland.json` from item 4
+  above; add the config and the extension appears.
 
 ## Known upstream limit: Hyprland and wl_compositor v6
 
