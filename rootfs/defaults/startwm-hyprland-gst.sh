@@ -22,6 +22,15 @@ export GDK_BACKEND=wayland,x11
 export MOZ_ENABLE_WAYLAND=1
 export vblank_mode=0
 
+# gst-wayland-display dlopen()s libEGL.so.1 by soname at runtime. A Nix image
+# keeps its libraries under /nix/store and resolves them through each binary's
+# RPATH; /usr/lib is a symlink farm the loader does not search by default, so
+# the dlopen fails even though the library is sitting right there:
+#   Failed to load LibEGL: DlOpen { "libEGL.so.1: cannot open shared object file" }
+# Append rather than overwrite: the NVIDIA shim in rootfs/init may already have
+# put /usr/local/lib here.
+export LD_LIBRARY_PATH="/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 # gst-wayland-display needs a real EGL stack even on its software path: with no
 # render node it panics in smithay::backend::egl::ffi rather than degrading to
 # Pixman the way pixelflux does. Prefer the real node, fall back to the
@@ -34,7 +43,18 @@ fi
 echo "[hypr-gst] starting gst-wayland-display with render-node=$RENDER_NODE"
 
 before="$(ls "${XDG_RUNTIME_DIR}"/wayland-* 2>/dev/null | tr '\n' ' ')"
-gst-launch-1.0 waylanddisplaysrc render-node="$RENDER_NODE" ! fakesink \
+# Render Hyprland's compositor INTO pixelflux's as a fullscreen client, so
+# Selkies streams it with no changes to the streaming stack. waylandsink
+# connects to WAYLAND_DISPLAY as it stands now -- wayland-1, pixelflux's socket,
+# set by the de service -- because this runs before the export below.
+#
+# Input works because GStreamer propagates Navigation events UPSTREAM from the
+# sink, and waylanddisplaysrc handles them (imp.rs: NavigationEvent::MouseMove,
+# KeyPress, ...). So clicks and keys land in Hyprland rather than stopping at
+# the surface showing it.
+gst-launch-1.0 waylanddisplaysrc render-node="$RENDER_NODE" \
+  ! queue max-size-buffers=3 leaky=downstream ! videoconvert \
+  ! queue max-size-buffers=3 leaky=downstream ! waylandsink fullscreen=true \
   > "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>&1 &
 GST_PID=$!
 

@@ -168,21 +168,49 @@
               foot = ./rootfs/config/foot;
               fuzzel = ./rootfs/config/fuzzel;
               mako = ./rootfs/config/mako;
+              ghostty = ./rootfs/config/ghostty;
             };
             extraEnv = [
-              "TERMINAL=foot"
+              "TERMINAL=ghostty"
               "XDG_CURRENT_DESKTOP=Hyprland"
               "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
               "XCURSOR_SIZE=24"
               # gst-launch needs to find the plugin and its dependencies.
               "GST_PLUGIN_SYSTEM_PATH_1_0=/usr/lib/gstreamer-1.0"
+              # $HOME is /config, which is the PVC. Putting mise's shims and
+              # ~/.local/bin ahead of the image means languages and Claude Code
+              # install once, persist across image rebuilds, and update
+              # themselves without one. Overrides imageEnv's PATH, so the image
+              # directories are repeated here.
+              "PATH=/config/.local/bin:/config/.local/share/mise/shims:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin"
+              "MISE_TRUSTED_CONFIG_PATHS=/config"
             ];
             extraPackages = (with final; [
               hyprland waybar mako swaybg fuzzel foot
               xwayland-satellite nautilus chromium
+              # Terminal of choice.
+              ghostty
+              # mise installs language runtimes into $HOME, which is the PVC, so
+              # they survive image rebuilds and update without one. It compiles
+              # most runtimes from source, hence the toolchain below.
+              mise
+              gcc gnumake pkg-config binutils patch
+              openssl zlib libffi readline ncurses bzip2 xz sqlite
+              git unzip
+              # Claude Code installs into $HOME/.local/bin and self-updates.
+              nodejs_22
               self.chromiumWrapped
-              gst_all_1.gstreamer gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
-              (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
+              # .out, NOT the default output. gst_all_1.gstreamer's default is
+              # the "-bin" output, which carries gst-launch/gst-inspect but no
+              # plugins -- so libgstcoreelements.so was absent and the pipeline
+              # died with `no element "fakesink"` while 109 other plugins from
+              # base/good were present and waylanddisplaysrc inspected fine.
+              gst_all_1.gstreamer.out
+              gst_all_1.gstreamer
+              gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
+              gst_all_1.gst-plugins-bad   # waylandsink
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
+              (writeShellScriptBin "dev-setup" (builtins.readFile ./rootfs/defaults/dev-setup.sh))
             ]) ++ [ self.gst-wayland-display ] ++ self.themePackages;
           };
 
