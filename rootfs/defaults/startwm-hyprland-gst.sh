@@ -22,6 +22,15 @@ export GDK_BACKEND=wayland,x11
 export MOZ_ENABLE_WAYLAND=1
 export vblank_mode=0
 
+# gst-wayland-display dlopen()s libEGL.so.1 by soname at runtime. A Nix image
+# keeps its libraries under /nix/store and resolves them through each binary's
+# RPATH; /usr/lib is a symlink farm the loader does not search by default, so
+# the dlopen fails even though the library is sitting right there:
+#   Failed to load LibEGL: DlOpen { "libEGL.so.1: cannot open shared object file" }
+# Append rather than overwrite: the NVIDIA shim in rootfs/init may already have
+# put /usr/local/lib here.
+export LD_LIBRARY_PATH="/usr/lib${LD_LIBRARY_PATH:+:$LD_LIBRARY_PATH}"
+
 # gst-wayland-display needs a real EGL stack even on its software path: with no
 # render node it panics in smithay::backend::egl::ffi rather than degrading to
 # Pixman the way pixelflux does. Prefer the real node, fall back to the
