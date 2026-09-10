@@ -43,7 +43,17 @@ fi
 echo "[hypr-gst] starting gst-wayland-display with render-node=$RENDER_NODE"
 
 before="$(ls "${XDG_RUNTIME_DIR}"/wayland-* 2>/dev/null | tr '\n' ' ')"
-gst-launch-1.0 waylanddisplaysrc render-node="$RENDER_NODE" ! fakesink \
+# Render Hyprland's compositor INTO pixelflux's as a fullscreen client, so
+# Selkies streams it with no changes to the streaming stack. waylandsink
+# connects to WAYLAND_DISPLAY as it stands now -- wayland-1, pixelflux's socket,
+# set by the de service -- because this runs before the export below.
+#
+# Input works because GStreamer propagates Navigation events UPSTREAM from the
+# sink, and waylanddisplaysrc handles them (imp.rs: NavigationEvent::MouseMove,
+# KeyPress, ...). So clicks and keys land in Hyprland rather than stopping at
+# the surface showing it.
+gst-launch-1.0 waylanddisplaysrc render-node="$RENDER_NODE" \
+  ! videoconvert ! waylandsink fullscreen=true \
   > "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>&1 &
 GST_PID=$!
 

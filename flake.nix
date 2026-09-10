@@ -189,6 +189,7 @@
               gst_all_1.gstreamer.out
               gst_all_1.gstreamer
               gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
+              gst_all_1.gst-plugins-bad   # waylandsink
               (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
             ]) ++ [ self.gst-wayland-display ] ++ self.themePackages;
           };
