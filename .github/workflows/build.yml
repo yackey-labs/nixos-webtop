@@ -28,6 +28,7 @@ jobs:
         image:
           - { target: image-webtop-niri,     name: nixos-webtop-niri }
           - { target: image-webtop-hyprland, name: nixos-webtop-hyprland }
+          - { target: image-webtop-hyprland-gst, name: nixos-webtop-hyprland-gst }
           - { target: image-webtop-i3,       name: nixos-webtop-i3 }
           - { target: image-base,            name: nixos-webtop-base }
     steps:

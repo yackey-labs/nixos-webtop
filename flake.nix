@@ -154,6 +154,38 @@
             ]) ++ self.themePackages;
           };
 
+          # Hyprland on gst-wayland-display rather than pixelflux, to get a
+          # wl_compositor v6 parent. See rootfs/defaults/startwm-hyprland-gst.sh.
+          image-webtop-hyprland-gst = self.mkSelkiesImage {
+            name = "selkies-nix-webtop-hyprland-gst";
+            title = "Nix Hyprland (gst)";
+            wayland = true;
+            waylandSocketIndex = 2;
+            startwm = ./rootfs/defaults/startwm-hyprland-gst.sh;
+            configTemplates = {
+              hypr = ./rootfs/config/hypr;
+              waybar = ./rootfs/config/waybar;
+              foot = ./rootfs/config/foot;
+              fuzzel = ./rootfs/config/fuzzel;
+              mako = ./rootfs/config/mako;
+            };
+            extraEnv = [
+              "TERMINAL=foot"
+              "XDG_CURRENT_DESKTOP=Hyprland"
+              "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
+              "XCURSOR_SIZE=24"
+              # gst-launch needs to find the plugin and its dependencies.
+              "GST_PLUGIN_SYSTEM_PATH_1_0=/usr/lib/gstreamer-1.0"
+            ];
+            extraPackages = (with final; [
+              hyprland waybar mako swaybg fuzzel foot
+              xwayland-satellite nautilus chromium
+              self.chromiumWrapped
+              gst_all_1.gstreamer gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
+            ]) ++ [ self.gst-wayland-display ] ++ self.themePackages;
+          };
+
           # Mirrors linuxserver's /usr/bin/chromium wrapper (plus Wayland detection).
           chromiumWrapped = final.lib.hiPrio (final.writeShellScriptBin "chromium" ''
             if ! ${final.procps}/bin/pgrep -x chromium >/dev/null; then
@@ -178,7 +210,8 @@
         inherit (pkgs.selkiesPackages)
           selkies selkies-web selkies-addons pixelflux pcmflux nginx-selkies
           gst-wayland-display
-          image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland;
+          image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland
+          image-webtop-hyprland-gst;
         default = pkgs.selkiesPackages.image-webtop-i3;
       });
 
