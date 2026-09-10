@@ -41,6 +41,12 @@
           selkies-web = self.callPackage ./nix/selkies-web.nix { };
           selkies-addons = self.callPackage ./nix/selkies-addons.nix { };
           nginx-selkies = self.callPackage ./nix/nginx.nix { };
+          # GStreamer source element wrapping a Smithay compositor that binds
+          # wl_compositor v6, unlike pixelflux's v5. See nix/gst-wayland-display.nix.
+          gst-wayland-display = self.callPackage ./nix/gst-wayland-display.nix {
+            inherit (final) gst_all_1 wayland wayland-protocols libxkbcommon
+                            libinput udev libdrm libgbm libGL seatd pixman;
+          };
 
           mkSelkiesImage = self.callPackage ./nix/image.nix { };
 
@@ -171,6 +177,7 @@
       packages = forAllSystems (pkgs: {
         inherit (pkgs.selkiesPackages)
           selkies selkies-web selkies-addons pixelflux pcmflux nginx-selkies
+          gst-wayland-display
           image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland;
         default = pkgs.selkiesPackages.image-webtop-i3;
       });
