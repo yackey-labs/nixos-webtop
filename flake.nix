@@ -181,7 +181,14 @@
               hyprland waybar mako swaybg fuzzel foot
               xwayland-satellite nautilus chromium
               self.chromiumWrapped
-              gst_all_1.gstreamer gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
+              # .out, NOT the default output. gst_all_1.gstreamer's default is
+              # the "-bin" output, which carries gst-launch/gst-inspect but no
+              # plugins -- so libgstcoreelements.so was absent and the pipeline
+              # died with `no element "fakesink"` while 109 other plugins from
+              # base/good were present and waylanddisplaysrc inspected fine.
+              gst_all_1.gstreamer.out
+              gst_all_1.gstreamer
+              gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
               (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
             ]) ++ [ self.gst-wayland-display ] ++ self.themePackages;
           };

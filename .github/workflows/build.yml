@@ -63,12 +63,20 @@ jobs:
       # skopeo streams the docker-archive straight to the registry. Going via
       # `docker load` would need the image unpacked on disk a second time, which
       # is exactly the space we do not have.
+      # Pushes on PRs too, tagged pr-<N>-<sha7>, so a branch build can be
+      # deployed and tested WITHOUT merging first. Previously every change cost
+      # two full builds -- one to validate the PR, then an identical one on main
+      # after merge -- before anything could be tried on the cluster.
       - name: Push to GHCR
-        if: github.event_name != 'pull_request'
         env:
           REG: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}
         run: |
-          TAG="main-$(git rev-parse --short=7 HEAD)-$(date -u +%Y%m%d%H%M%S)"
+          SHA=$(git rev-parse --short=7 HEAD)
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            TAG="pr-${{ github.event.number }}-${SHA}"
+          else
+            TAG="main-${SHA}-$(date -u +%Y%m%d%H%M%S)"
+          fi
           nix run nixpkgs#skopeo -- --insecure-policy copy \
             --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             "docker-archive:${{ steps.build.outputs.tarball }}" \
@@ -78,9 +86,12 @@ jobs:
           #   initializing source docker://...: unable to retrieve auth token:
           #   invalid username/password: unauthorized
           # The blobs are already uploaded, so this copy is just a manifest write.
-          nix run nixpkgs#skopeo -- --insecure-policy copy \
-            --src-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
-            --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
-            "docker://${REG}:${TAG}" "docker://${REG}:latest"
+          # :latest tracks main only; PR tags stay out of it.
+          if [ "${{ github.event_name }}" != "pull_request" ]; then
+            nix run nixpkgs#skopeo -- --insecure-policy copy \
+              --src-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+              --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
+              "docker://${REG}:${TAG}" "docker://${REG}:latest"
+          fi
           echo "pushed ${REG}:${TAG}"
           echo "### \`${REG}:${TAG}\`" >> "$GITHUB_STEP_SUMMARY"
