@@ -102,6 +102,12 @@
             name = "selkies-nix-base";
             title = "Selkies";
             startwm = ./rootfs/defaults/startwm-openbox.sh;
+            configTemplates = { ghostty = ./rootfs/config/ghostty; };
+            extraEnv = [ "TERMINAL=ghostty" ];
+            extraPackages = with final; [
+              ghostty
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
+            ];
           };
 
           # linuxserver/webtop:arch-i3 equivalent: i3 + xfce4-terminal + chromium.
@@ -109,16 +115,18 @@
             name = "selkies-nix-webtop-i3";
             title = "Nix i3";
             startwm = ./rootfs/defaults/startwm-i3.sh;
-            extraEnv = [ "TERMINAL=xfce4-terminal" ];
+            configTemplates = { ghostty = ./rootfs/config/ghostty; };
+            extraEnv = [ "TERMINAL=ghostty" ];
             extraPackages = with final; [
               i3
               i3status
               dmenu
+              ghostty
               xfce4-terminal
               xfce.xfconf
               chromium
               self.chromiumWrapped
-              (writeShellScriptBin "x-terminal-emulator" ''exec ${xfce4-terminal}/bin/xfce4-terminal "$@"'')
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
             ];
           };
 
@@ -134,14 +142,16 @@
             startwm = ./rootfs/defaults/startwm-niri.sh;
             configTemplates = {
               niri = ./rootfs/config/niri;
+              ghostty = ./rootfs/config/ghostty;
               foot = ./rootfs/config/foot;
               fuzzel = ./rootfs/config/fuzzel;
             };
-            extraEnv = [ "TERMINAL=foot" "XDG_CURRENT_DESKTOP=niri" ];
+            extraEnv = [ "TERMINAL=ghostty" "XDG_CURRENT_DESKTOP=niri" ];
             extraPackages = (with final; [
               niri
               noctalia-shell
               xwayland-satellite
+              ghostty
               foot
               fuzzel
               xfce4-terminal
@@ -149,7 +159,7 @@
               nautilus
               chromium
               self.chromiumWrapped
-              (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
             ]) ++ self.themePackages;
           };
 
@@ -169,9 +179,10 @@
               foot = ./rootfs/config/foot;
               fuzzel = ./rootfs/config/fuzzel;
               mako = ./rootfs/config/mako;
+              ghostty = ./rootfs/config/ghostty;
             };
             extraEnv = [
-              "TERMINAL=foot"
+              "TERMINAL=ghostty"
               "XDG_CURRENT_DESKTOP=Hyprland"
               "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
               "XCURSOR_SIZE=24"
@@ -182,12 +193,13 @@
               mako
               swaybg
               fuzzel
+              ghostty
               foot
               xwayland-satellite
               nautilus
               chromium
               self.chromiumWrapped
-              (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
             ]) ++ self.themePackages;
           };
 

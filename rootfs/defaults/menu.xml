@@ -1,6 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <openbox_menu xmlns="http://openbox.org/3.4/menu">
 <menu id="root-menu" label="Openbox 3">
+  <item label="Terminal (ghostty)"><action name="Execute"><command>ghostty</command></action></item>
   <item label="Terminal (st)"><action name="Execute"><command>st</command></action></item>
   <item label="xterm"><action name="Execute"><command>xterm</command></action></item>
   <separator />
