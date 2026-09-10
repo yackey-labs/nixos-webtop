@@ -32,7 +32,14 @@
         # overrideScope rather than a plain attribute override so every package
         # in the set links the same libgstgl; two copies in one image would be a
         # symlink-farm conflict waiting to happen.
-        gst_all_1 = prev.gst_all_1.overrideScope (gstFinal: gstPrev: {
+        #
+        # Exposed as its OWN attribute rather than replacing gst_all_1. Patching
+        # gst_all_1 overlay-wide rebuilds everything that touches GStreamer
+        # anywhere in nixpkgs -- the first attempt dragged in ungoogled-chromium,
+        # libadwaita, nautilus and zenity, ran for 51 minutes and then failed on
+        # zenity, a package no image here even uses for video. Only the
+        # hyprland-gst image consumes this set.
+        gstWithWaylandKeyboard = prev.gst_all_1.overrideScope (gstFinal: gstPrev: {
           gst-plugins-base = gstPrev.gst-plugins-base.overrideAttrs (old: {
             patches = (old.patches or [ ]) ++ [ ./nix/patches/gst-gl-wayland-keyboard.patch ];
             buildInputs = (old.buildInputs or [ ]) ++ [ final.libxkbcommon ];
@@ -67,7 +74,8 @@
           # GStreamer source element wrapping a Smithay compositor that binds
           # wl_compositor v6, unlike pixelflux's v5. See nix/gst-wayland-display.nix.
           gst-wayland-display = self.callPackage ./nix/gst-wayland-display.nix {
-            inherit (final) gst_all_1 wayland wayland-protocols libxkbcommon
+            gst_all_1 = final.gstWithWaylandKeyboard;
+            inherit (final) wayland wayland-protocols libxkbcommon
                             libinput udev libdrm libgbm libGL seatd pixman;
           };
 
@@ -234,9 +242,10 @@
               # plugins -- so libgstcoreelements.so was absent and the pipeline
               # died with `no element "fakesink"` while 109 other plugins from
               # base/good were present and waylanddisplaysrc inspected fine.
-              gst_all_1.gstreamer.out
-              gst_all_1.gstreamer
-              gst_all_1.gst-plugins-base gst_all_1.gst-plugins-good
+              gstWithWaylandKeyboard.gstreamer.out
+              gstWithWaylandKeyboard.gstreamer
+              gstWithWaylandKeyboard.gst-plugins-base
+              gstWithWaylandKeyboard.gst-plugins-good
               # gst-plugins-bad was here only for waylandsink, which is gone --
               # it cannot forward input, so the pipeline uses glimagesink from
               # -base instead. Dropping it also keeps the rebuild triggered by
