@@ -56,7 +56,13 @@
           themePackages = with final; [
             nerd-fonts.jetbrains-mono
             papirus-icon-theme
-            catppuccin-cursors
+            # The bare `catppuccin-cursors` attribute is an aggregate and ships
+            # NO share/icons theme directory -- with it alone /usr/share/icons
+            # held only Adwaita, breeze and Papirus, so XCURSOR_THEME below
+            # pointed at a theme that did not exist and the pointer never drew.
+            # The per-flavour variant is what actually installs
+            # share/icons/catppuccin-mocha-dark-cursors.
+            catppuccin-cursors.mochaDark
             adwaita-icon-theme
           ];
 
