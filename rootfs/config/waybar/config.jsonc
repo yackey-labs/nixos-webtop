@@ -8,7 +8,19 @@
   "margin-right": 12,
   "spacing": 6,
 
-  "modules-left": ["hyprland/workspaces", "hyprland/window"],
+  // Tap targets first. Every keybind in hyprland.conf needs SUPER, and phone
+  // on-screen keyboards do not have a Super key at all -- verified on iOS, and
+  // the Selkies pop-over keyboard's own Super button does not pass through
+  // either (it fails identically on the niri desktop, which shares none of this
+  // stack, so it is a Selkies limitation rather than something fixable here).
+  // Without these three buttons a phone can move the pointer and type but can
+  // never open or close a window.
+  "modules-left": ["custom/term", "custom/menu", "custom/close", "hyprland/workspaces", "hyprland/window"],
+
+  "custom/term":  { "format": "", "tooltip": false, "on-click": "ghostty" },
+  "custom/menu":  { "format": "󰀻", "tooltip": false, "on-click": "fuzzel" },
+  "custom/close": { "format": "󰅖", "tooltip": false, "on-click": "hyprctl dispatch killactive" },
+
   "modules-center": ["clock"],
   "modules-right": ["cpu", "memory", "pulseaudio", "tray"],
 

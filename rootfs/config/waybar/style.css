@@ -28,6 +28,18 @@ window#waybar {
 #workspaces button.active { color: #cba6f7; }
 #workspaces button:hover  { color: #f5c2e7; background: transparent; }
 
+/* Touch targets. A 34px bar scaled to a phone leaves roughly 10px of usable
+   height, so these get generous horizontal padding and a larger glyph to stay
+   hittable with a fingertip. */
+#custom-term, #custom-menu, #custom-close {
+  padding: 0 12px;
+  font-size: 16px;
+}
+#custom-term  { color: #a6e3a1; }
+#custom-menu  { color: #89b4fa; }
+#custom-close { color: #f38ba8; }
+#custom-term:hover, #custom-menu:hover, #custom-close:hover { color: #f5c2e7; }
+
 #window { padding: 0 10px; color: #bac2de; }
 #clock  { padding: 0 14px; color: #cba6f7; font-weight: bold; }
 
