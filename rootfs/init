@@ -44,12 +44,69 @@ if [ ! -f "$CONF_DIR/menu.xml" ]; then
   cp /defaults/menu.xml "$CONF_DIR/menu.xml"
 fi
 # Per-app config templates baked into the image (/defaults/config/<app> -> ~/.config/<app>).
+#
+# This used to be `if [ ! -d ~/.config/$app ]; then cp; fi`, which meant the
+# copy happened exactly once, on the first ever boot with an empty /config. From
+# then on the PVC's copy shadowed the image forever: a config fix could be
+# built, shipped and deployed and still have no effect on a running desktop.
+# That is how `Invalid dispatcher: togglesplit` survived a release that fixed it.
+#
+# Now we remember what we shipped, per file, in a manifest. That is the only way
+# to distinguish "the user edited this" from "this is a stale copy of an old
+# default", which the mtime and the file itself cannot tell you.
+#
+#   user's copy == what we last shipped   -> untouched, safe to update in place
+#   user's copy == the new default        -> already current, just record it
+#   otherwise                             -> the user edited it: keep theirs,
+#                                            drop <file>.new beside it and warn
+#
+# First run after this change there is no manifest, so nothing can be classified.
+# Rather than freeze every existing desktop on its old config, we adopt the
+# shipped default and keep any differing file as <file>.bak-<timestamp>. Noisy
+# but recoverable, and it self-corrects from the next boot onward.
+STATE_DIR="$HOME/.local/state/nixos-webtop"
+mkdir -p "$STATE_DIR"
 for tpl in /defaults/config/*/; do
   [ -d "$tpl" ] || continue
   app=$(basename "$tpl")
-  if [ ! -d "$HOME/.config/$app" ]; then
-    cp -rL "$tpl" "$HOME/.config/$app"
-  fi
+  dest="$HOME/.config/$app"
+  manifest="$STATE_DIR/shipped-$app.sha256"
+  new_manifest="$manifest.next"
+  : > "$new_manifest"
+  had_manifest=0
+  [ -f "$manifest" ] && had_manifest=1
+
+  (cd "$tpl" && find . -type f -o -type l) | sed 's|^\./||' | while IFS= read -r rel; do
+    src="$tpl$rel"
+    dst="$dest/$rel"
+    new_sum=$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)
+    printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+
+    if [ ! -f "$dst" ]; then
+      mkdir -p "$(dirname "$dst")"; cp -L "$src" "$dst"; continue
+    fi
+
+    cur_sum=$(sha256sum "$dst" 2>/dev/null | cut -d' ' -f1)
+    [ "$cur_sum" = "$new_sum" ] && continue
+
+    if [ "$had_manifest" -eq 0 ]; then
+      ts=$(date +%Y%m%d%H%M%S)
+      echo "[init] $app/$rel differs from the image default and predates config tracking; keeping yours as $rel.bak-$ts"
+      cp -L "$dst" "$dst.bak-$ts"
+      cp -L "$src" "$dst"
+      continue
+    fi
+
+    old_sum=$(awk -v r="$rel" '$2==r {print $1}' "$manifest" 2>/dev/null | head -1)
+    if [ "$cur_sum" = "$old_sum" ]; then
+      cp -L "$src" "$dst"                       # untouched since we shipped it
+    else
+      echo "[init] $app/$rel was edited locally; image default written to $rel.new"
+      cp -L "$src" "$dst.new"
+    fi
+  done
+
+  mv "$new_manifest" "$manifest"
 done
 
 # i3 would otherwise pop its first-run config wizard; seed the stock config instead.
