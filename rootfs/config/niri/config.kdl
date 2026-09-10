@@ -379,7 +379,7 @@ binds {
     Mod+Shift+Slash { show-hotkey-overlay; }
 
     // Suggested binds for running programs: terminal, app launcher, screen locker.
-    Mod+T hotkey-overlay-title="Open a Terminal: foot" { spawn "foot"; }
+    Mod+T hotkey-overlay-title="Open a Terminal: ghostty" { spawn "ghostty"; }
     Mod+D hotkey-overlay-title="Run an Application: noctalia launcher" { spawn "noctalia-shell" "ipc" "call" "launcher" "toggle"; }
     Mod+B hotkey-overlay-title="Open Chromium" { spawn "chromium"; }
     Mod+E hotkey-overlay-title="Open Files: nautilus" { spawn "nautilus"; }
