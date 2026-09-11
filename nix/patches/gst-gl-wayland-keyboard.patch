@@ -23,7 +23,7 @@
  #include "wayland_event_source.h"
  
  #include "../gstgl_fwd.h"
-@@ -147,6 +149,109 @@
+@@ -147,6 +149,130 @@
  };
  
  static void
@@ -84,11 +84,32 @@
 +  xkb_keysym_t sym;
 +  char name[64];
 +
-+  if (!display->xkb_state)
++  if (!display->xkb_state || !display->xkb_keymap)
 +    return;
 +
-+  /* wl_keyboard reports evdev keycodes; xkbcommon expects them offset by 8. */
-+  sym = xkb_state_key_get_one_sym (display->xkb_state, key + 8);
++  /* wl_keyboard reports evdev keycodes; xkbcommon expects them offset by 8.
++   *
++   * Deliberately the BASE keysym for the key, not xkb_state_key_get_one_sym().
++   * These events are forwarded to another compositor which keeps its own xkb
++   * state and applies modifiers itself, so resolving them here applies
++   * modifiers twice. That is not academic: a phone keyboard sends
++   * ISO_Level3_Shift, and once it latched, every following letter resolved to a
++   * level-3 keysym whose name is absent from the receiver's lookup table and
++   * was dropped -- typing simply stopped working, while the same keyboard was
++   * fine on a desktop that receives wl_keyboard directly. Modifier keys are
++   * still forwarded as their own key events, so the far side reconstructs the
++   * shifted character correctly. */
++  {
++    const xkb_keysym_t *syms = NULL;
++    xkb_layout_index_t layout =
++        xkb_state_key_get_layout (display->xkb_state, key + 8);
++    int nsyms = xkb_keymap_key_get_syms_by_level (display->xkb_keymap,
++        key + 8, layout, 0, &syms);
++
++    if (nsyms < 1 || !syms)
++      return;
++    sym = syms[0];
++  }
 +  if (sym == XKB_KEY_NoSymbol)
 +    return;
 +  if (xkb_keysym_get_name (sym, name, sizeof (name)) <= 0)
@@ -133,7 +154,7 @@
  seat_handle_capabilities (void *data, struct wl_seat *seat,
      enum wl_seat_capability caps)
  {
-@@ -161,16 +266,15 @@
+@@ -161,16 +287,15 @@
      wl_pointer_destroy (display->pointer);
      display->pointer = NULL;
    }
