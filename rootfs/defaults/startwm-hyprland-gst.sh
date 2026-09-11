@@ -121,7 +121,26 @@ if [ -z "$SOCK" ]; then
   exit 1
 fi
 
-echo "[hypr-gst] compositor is on $SOCK; starting Hyprland nested in it"
+# The socket appearing is NOT the same as the compositor being ready. Smithay
+# binds the wayland socket before it creates its output, so Hyprland can connect
+# to a compositor that has no wl_output yet, fall back to a headless monitor and
+# come up as `Monitor FALLBACK` with no usable output at all. When that happens
+# swaybg and waybar have no layer surface to attach to, so the desktop is a bare
+# wallpaper-less void -- observed once on a rollout, and it cleared on a plain
+# pod restart, which is exactly the signature of a race rather than a config
+# error. Wait for the output to be advertised before nesting anything in it.
+for _ in $(seq 1 30); do
+  grep -q "Creating new Output" "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>/dev/null && break
+  kill -0 "$GST_PID" 2>/dev/null || { echo "[hypr-gst] compositor died before advertising an output:"; tail -20 "${XDG_RUNTIME_DIR}/gst-wayland-display.log"; exit 1; }
+  sleep 1
+done
+if ! grep -q "Creating new Output" "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>/dev/null; then
+  echo "[hypr-gst] compositor published a socket but never an output in 30s:"
+  tail -20 "${XDG_RUNTIME_DIR}/gst-wayland-display.log"
+  exit 1
+fi
+
+echo "[hypr-gst] compositor is on $SOCK with an output; starting Hyprland nested in it"
 export WAYLAND_DISPLAY="$SOCK"
 
 # Do NOT exec Hyprland. The compositor it is nested in is a sibling process, and

@@ -17,7 +17,10 @@
   // never open or close a window.
   "modules-left": ["custom/term", "custom/menu", "custom/close", "hyprland/workspaces", "hyprland/window"],
 
-  "custom/term":  { "format": "", "tooltip": false, "on-click": "ghostty" },
+    // \u escape rather than a literal glyph: the first attempt shipped an
+  // empty format because the raw codepoint was lost in transit, so the
+  // button rendered as zero-width and invisible while still being present.
+  "custom/term":  { "format": "\uf120", "tooltip": false, "on-click": "ghostty" },
   "custom/menu":  { "format": "󰀻", "tooltip": false, "on-click": "fuzzel" },
   "custom/close": { "format": "󰅖", "tooltip": false, "on-click": "hyprctl dispatch killactive" },
 
