@@ -1,17 +1,36 @@
 # pixelflux: Selkies' X11/Wayland capture + x264/jpeg encoder. Upstream publishes
 # only manylinux wheels (no sdist that builds cleanly), so we consume the wheel
 # and let autoPatchelf wire it to Nix's libraries.
+#
+# 2.1.0 is NOT on PyPI -- PyPI still shows 2.0.0 -- so the wheels come from the
+# GitHub release assets instead. Upstream tags releases by commit sha rather
+# than by version, hence the sha-looking `release` below; it is a real git tag.
+#
+# The bump matters for more than freshness: 2.1.0 binds wl_compositor at v6
+# (pixelflux/src/lib.rs, `CompositorState::new_v6`, landed 2026-08-12, after the
+# 2.0.0 release). v5 was the entire reason the Hyprland desktop has to nest
+# inside gst-wayland-display -- aquamarine binds v6 and dies on v5 with
+# "invalid version for global wl_compositor (4): expected at most 5, got 6".
+# With v6 available, Hyprland should be able to nest directly in pixelflux the
+# way niri already does, which also makes it follow the client's resolution
+# instead of being pinned by pipeline caps. That simplification is deliberately
+# NOT part of this commit -- bump first, verify nothing regresses across all
+# five images, then remove the scaffolding separately.
 { lib, stdenv, buildPythonPackage, fetchurl, python, autoPatchelfHook
 , libgbm, pixman, libxkbcommon, libva, libdrm, zlib, xorg, libGL, wayland }:
 let
+  # Upstream tags each release with its commit sha.
+  release = "a3290fd";
+  wheelUrl = name:
+    "https://github.com/selkies-project/pixelflux/releases/download/${release}/${name}";
   wheels = {
     "3.13" = {
-      x86_64-linux = { name = "pixelflux-2.0.0-cp313-cp313-manylinux_2_28_x86_64.whl";  url = "https://files.pythonhosted.org/packages/09/b2/79a27f3cbe8c296ecd98770469cc7cda2c8858b2e09b98a1f935d9652188/pixelflux-2.0.0-cp313-cp313-manylinux_2_28_x86_64.whl";  hash = "sha256-kKLYO+VpRY3/NZxd+oPEe7zPVGqgkhT8LtiAbf1CBo0="; };
-      aarch64-linux = { name = "pixelflux-2.0.0-cp313-cp313-manylinux_2_28_aarch64.whl"; url = "https://files.pythonhosted.org/packages/10/74/38f4b2f59b1a98b1f9da4d223fcd88d64194f6dcabf16f61ced77424e72a/pixelflux-2.0.0-cp313-cp313-manylinux_2_28_aarch64.whl"; hash = "sha256-Uu9bmVELTWqJN/evDDM0q8izHRJlSePFJyOZ37OspsA="; };
+      x86_64-linux  = { name = "pixelflux-2.1.0-cp313-cp313-manylinux_2_28_x86_64.whl";  hash = "sha256-ZZqMIgK7+tEOuSXnVlb/cUzxOBancQfZtTAQKwF+B7k="; };
+      aarch64-linux = { name = "pixelflux-2.1.0-cp313-cp313-manylinux_2_28_aarch64.whl"; hash = "sha256-cRqhiYiNzFaz7q0AavPeNSIzrnu9e0GpYtYZ6BhXhmw="; };
     };
     "3.14" = {
-      x86_64-linux = { name = "pixelflux-2.0.0-cp314-cp314-manylinux_2_28_x86_64.whl";  url = "https://files.pythonhosted.org/packages/94/da/b4b134d12f46fadc5edc94f778ac324ca6ab02b5b9be91466f95251e6f14/pixelflux-2.0.0-cp314-cp314-manylinux_2_28_x86_64.whl";  hash = "sha256:7c501d184fba79746ca63118b5cc462851b7cad217094e11a011696b3bfa3953"; };
-      aarch64-linux = { name = "pixelflux-2.0.0-cp314-cp314-manylinux_2_28_aarch64.whl"; url = "https://files.pythonhosted.org/packages/01/eb/899b089ad868a4ded2e726df93cfe0914ac9daa89774809ddd65c4829b0d/pixelflux-2.0.0-cp314-cp314-manylinux_2_28_aarch64.whl"; hash = "sha256:033afea1c4308416460249b554bd717731a62b7ae7b676357069eb294f723c24"; };
+      x86_64-linux  = { name = "pixelflux-2.1.0-cp314-cp314-manylinux_2_28_x86_64.whl";  hash = "sha256-xDvvO42RUjHCVy4XHipAgKs1vBc1JjR8NaMTZ4x274U="; };
+      aarch64-linux = { name = "pixelflux-2.1.0-cp314-cp314-manylinux_2_28_aarch64.whl"; hash = "sha256-w0/XZYxzOHvi+xVL/ScHKYTuloHx6W2MVlGacA49JxI="; };
     };
   };
   pyVer = lib.versions.majorMinor python.version;
@@ -20,10 +39,10 @@ let
 in
 buildPythonPackage {
   pname = "pixelflux";
-  version = "2.0.0";
+  version = "2.1.0";
   format = "wheel";
 
-  src = fetchurl { inherit (wheel) name url hash; };
+  src = fetchurl { inherit (wheel) name hash; url = wheelUrl wheel.name; };
 
   nativeBuildInputs = [ autoPatchelfHook ];
   buildInputs = [
