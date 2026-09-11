@@ -90,6 +90,13 @@ echo "[hypr-gst] pinning virtual output to ${WD_WIDTH}x${WD_HEIGHT}@${WD_FPS}"
 # The PID stays alive, so s6 sees a healthy service and never restarts it, and
 # the pod sits 1/1 Ready while rendering nothing. With --no-fault the crash
 # actually kills the process and the supervision below takes over.
+# force-aspect-ratio=true, NOT false. The compositor is pinned to WD_WIDTH x
+# WD_HEIGHT, so when Selkies resizes its output to match the client -- a phone
+# in portrait reports something like 1290x2232 -- a 16:9 desktop has to go into
+# a 9:19.5 window. With force-aspect-ratio=false that is a stretch, which is the
+# "everything looks smushed" report from a phone. With it true the desktop is
+# letterboxed instead: smaller, but the right shape and readable.
+#
 # videoconvert is kept ahead of the sink deliberately. glimagesink embeds
 # glupload/glcolorconvert and could take the DMA-BUF directly, which would be
 # the faster path, but the converted route is the one already proven to render
@@ -98,7 +105,7 @@ gst-launch-1.0 --no-fault waylanddisplaysrc render-node="$RENDER_NODE" \
   ! video/x-raw,width=${WD_WIDTH},height=${WD_HEIGHT},framerate=${WD_FPS}/1 \
   ! queue max-size-buffers=3 leaky=downstream ! videoconvert \
   ! queue max-size-buffers=3 leaky=downstream \
-  ! glimagesink handle-events=true force-aspect-ratio=false \
+  ! glimagesink handle-events=true force-aspect-ratio=true \
   > "${XDG_RUNTIME_DIR}/gst-wayland-display.log" 2>&1 &
 GST_PID=$!
 

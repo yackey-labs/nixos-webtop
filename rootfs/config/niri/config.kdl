@@ -313,10 +313,18 @@ animations {
     // Uncomment to turn off all animations.
     // off
 
-    // Faster than default on purpose. Every intermediate animation frame is a
-    // frame x264 must encode and push down the wire, so long floaty transitions
-    // cost real bandwidth and look worse over a stream, not better.
-    slowdown 0.7
+    // Every intermediate animation frame is a frame x264 must encode and push
+    // down the wire, so floaty transitions cost real bandwidth AND latency over
+    // a stream -- they look worse, not better. slowdown 0.7 was still visibly
+    // sluggish next to the Hyprland desktop, which is the direct comparison
+    // that matters here.
+    //
+    // 0.2 keeps just enough motion to show which direction a workspace scrolled
+    // (niri is a scrolling compositor, so losing that entirely is disorienting)
+    // while cutting roughly 4/5 of the frames the encoder has to carry. Replace
+    // with a bare `off` below if even that is too much.
+    // off
+    slowdown 0.2
 }
 
 // Window rules let you adjust behavior for individual windows.
