@@ -237,6 +237,11 @@
             title = "Nix scoot";
             wayland = true;
             waylandSocketIndex = 2;
+            # Nothing in this image can reach an X server: scoot has no
+            # XWayland, so Xvfb, openbox, st, xterm, xdotool, xrandr and the
+            # rest of the X userland would be dead weight. This is the only
+            # image that can say that.
+            x11 = false;
             startwm = ./rootfs/defaults/startwm-scoot.sh;
             configTemplates = {
               scoot = ./rootfs/config/scoot;
@@ -257,6 +262,7 @@
               nautilus
               chromium
               self.chromiumWrapped
+              self.wtypeViaScoot
               (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
             ]) ++ [ self.scoot self.noctalia-shell ] ++ self.themePackages;
           };
@@ -324,6 +330,41 @@
               (writeShellScriptBin "dev-setup" (builtins.readFile ./rootfs/defaults/dev-setup.sh))
             ]) ++ [ self.gst-wayland-display ] ++ self.themePackages;
           };
+
+          # Selkies types text into the session by shelling out to `wtype`,
+          # which speaks virtual-keyboard-v1 -- a protocol scoot deliberately
+          # does not implement. scoot's control socket does the same job and
+          # does it better: `scoot msg type` types on the *active* keyboard
+          # layout and handles shifted characters, dead keys and compose
+          # sequences itself, rather than synthesising raw keycodes and hoping
+          # the layout agrees.
+          #
+          # This is what makes a phone keyboard and a clipboard paste work in
+          # the scoot image -- the same thing commit 32ac3a1 had to fix by
+          # hand for Hyprland, except here there is a real API for it.
+          #
+          # hiPrio because base `wtype` is in every image; buildEnv resolves
+          # the collision in this one's favour.
+          wtypeViaScoot = final.lib.hiPrio (final.writeShellScriptBin "wtype" ''
+            # Selkies calls this two ways: `wtype CHAR` for a keysym it could
+            # not map, and `wtype -- TEXT` for a batch, which is the shape a
+            # clipboard paste and a phone keyboard arrive in. After `--`
+            # everything is literal, so a pasted "-n" is typed, not rejected.
+            literal=0
+            if [ "''${1:-}" = "--" ]; then literal=1; shift; fi
+            if [ "$literal" = 0 ]; then
+              for arg in "$@"; do
+                case "$arg" in
+                  # -k/-M/-m/-P/-p/-s are wtype's key and modifier options.
+                  # Nothing in Selkies passes them, and typing a flag as
+                  # literal text would be a silent wrong answer.
+                  -*) echo "wtype: unsupported option $arg (this is scoot's shim)" >&2; exit 64 ;;
+                esac
+              done
+            fi
+            [ "$#" -gt 0 ] || exit 0
+            exec ${self.scoot}/bin/scoot msg type "$*"
+          '');
 
           # Mirrors linuxserver's /usr/bin/chromium wrapper (plus Wayland detection).
           chromiumWrapped = final.lib.hiPrio (final.writeShellScriptBin "chromium" ''

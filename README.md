@@ -102,6 +102,10 @@ image-webtop-xfce = self.mkSelkiesImage {
 };
 ```
 
+`wayland = true` swaps Xvfb for pixelflux's compositor; `x11 = false` goes
+further and drops the X userland from the image, which is only correct if the
+compositor has no XWayland (see the [scoot image](#scoot-image)).
+
 ## Updating pins
 
 - Selkies commit and hashes: `selkiesSrc` in `flake.nix`, `nix/python-xlib-selkies.nix`.
@@ -161,6 +165,22 @@ the Selkies sidebar's keyboard-lock toggle. `Alt+h/j/k/l` move around,
 config is `rootfs/config/scoot/config.toml`, copied to `/config/.config/scoot/` on
 first run only; inside a terminal prefer the Super bindings, since `Alt+b`/`Alt+d`
 are readline's backward-word and kill-word.
+
+Because scoot has no XWayland, this is the only image that carries **no X11
+userland at all** — `mkSelkiesImage { x11 = false; }` drops Xvfb, openbox, st,
+xterm, xdotool, xrandr, xclip and the rest, none of which anything in the image
+could have reached. (`xkeyboard_config` stays: libxkbcommon reads the same
+keymaps, so it was never X11-only.) The two X services already no-op under
+`PIXELFLUX_WAYLAND`, so nothing had to change at runtime to make that safe.
+
+One thing does need replacing rather than dropping. Selkies types text into the
+session by shelling out to `wtype`, which speaks `virtual-keyboard-v1` — a
+protocol scoot deliberately does not implement — so the image ships a `wtype`
+that calls `scoot msg type` instead. That is the better answer anyway: it types
+on the *active* keyboard layout and handles shifted characters, dead keys and
+compose sequences itself, rather than synthesising keycodes and hoping the
+layout agrees. It is what makes a clipboard paste and a phone keyboard work
+here, the same thing that had to be fixed by hand for Hyprland.
 
 Two limits worth knowing before deploying it:
 
