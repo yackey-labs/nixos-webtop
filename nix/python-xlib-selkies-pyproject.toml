@@ -1,0 +1,14 @@
+# Packaging for Selkies' python-xlib fork, which was vendored into the Selkies
+# tree as a plain directory and so ships none of its own. See
+# nix/python-xlib-selkies.nix, which copies this in and builds it.
+[build-system]
+requires = [ "setuptools" ]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "python-xlib"
+version = "0.33"
+description = "Selkies' fork of python-xlib"
+
+[tool.setuptools.packages.find]
+include = [ "Xlib*" ]

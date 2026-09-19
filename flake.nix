@@ -57,10 +57,13 @@
 
           # Python interpreter whose package set carries Selkies' extras. Overriding
           # `python-xlib` here (rather than adding a second package) keeps pynput and
-          # selkies on the same python-xlib fork.
+          # selkies on the same python-xlib fork -- which matters more than it
+          # looks: pynput is how X11 input injection reaches the desktop, and a
+          # pynput built against stock python-xlib would be talking to a
+          # different protocol layer than selkies is.
           pythonSelkies = final.python3.override {
-            packageOverrides = pself: psuper: {
-              python-xlib = pself.callPackage ./nix/python-xlib-selkies.nix { xlib = psuper.python-xlib; };
+            packageOverrides = pself: _psuper: {
+              python-xlib = pself.callPackage ./nix/python-xlib-selkies.nix { };
               pixelflux = pself.callPackage ./nix/pixelflux.nix { };
               pcmflux = pself.callPackage ./nix/pcmflux.nix { };
             };
