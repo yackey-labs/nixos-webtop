@@ -23,10 +23,11 @@ export ELECTRON_OZONE_PLATFORM_HINT=wayland
 # timer and its present() drops a frame rather than blocking when the host
 # has released neither buffer, so there is nothing to stall on.
 
-# scoot applies the host's size from its FIRST xdg_surface configure and
-# never resizes again, so the session runs at whatever it starts at -- later
-# browser resizes are letterboxed by pixelflux, not reflowed. Start at the
-# requested resolution rather than scoot's own 1280x720 default.
+# The size to come up at. scoot follows the host's size for the life of the
+# session now (scoot-sh/scoot#144, fixed upstream), so a later browser resize
+# reflows rather than letterboxing, and this is only the starting point --
+# what the desktop looks like before anyone has connected, and what it falls
+# back to if pixelflux answers the first configure with 0x0 ("you choose").
 W="${SELKIES_MANUAL_WIDTH:-1280}"; H="${SELKIES_MANUAL_HEIGHT:-800}"
 [ "$W" = "0" ] && W=1280
 [ "$H" = "0" ] && H=800
