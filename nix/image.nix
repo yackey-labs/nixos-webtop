@@ -9,6 +9,7 @@
 , title ? "Selkies"
 , startwm                       # path to the startwm.sh that launches the WM/DE
 , wayland ? false               # true: pixelflux's built-in compositor instead of Xvfb (PIXELFLUX_WAYLAND)
+, x11 ? true                    # false: drop the X11 userland entirely (see basePackages)
 , waylandSocketIndex ? 0        # wayland-N socket of the *nested* compositor (clipboard/wtype target)
 , configTemplates ? { }         # { "niri" = ./dir; } -> copied to $HOME/.config/niri on first run
 , extraPackages ? [ ]
@@ -29,19 +30,33 @@ let
     # selkies stack
     selkies selkies-web selkies-addons nginx-selkies
     pulseaudio dbus
-    # X11
-    xorg-server xorg.xrandr xorg.xset xorg.xrdb xorg.xauth xorg.xhost xorg.xdpyinfo
-    xorg.xsetroot xorg.xprop xorg.xwininfo libxcvt xdotool xsettingsd
-    xorg.fontmiscmisc xorg.fontcursormisc xkeyboard_config
-    xclip xsel wl-clipboard wtype wlr-randr xdg-utils
-    # base window manager + terminals (webtop variants add their own on top)
-    openbox st xterm
+    # keyboard layouts (libxkbcommon reads these too, so this is NOT X11-only)
+    xkeyboard_config
+    # wayland userland
+    wl-clipboard wtype wlr-randr xdg-utils
     # graphics / fonts / themes
     mesa libGL libglvnd libva vulkan-loader
     fontconfig dejavu_fonts noto-fonts noto-fonts-cjk-sans noto-fonts-color-emoji
     hicolor-icon-theme adwaita-icon-theme gsettings-desktop-schemas glib dconf
     shared-mime-info
-  ] ++ extraPackages;
+  ]
+  # The X11 userland, and the openbox/st/xterm desktop that is only reachable
+  # through it. A `wayland = true` image still wants all of this as long as it
+  # runs XWayland (niri and Hyprland do, through xwayland-satellite) -- Selkies
+  # itself shells out to xrandr for resizing and xclip for the clipboard, and
+  # falls back to the Wayland tools only when the X ones are missing. An image
+  # whose compositor has no XWayland at all can never reach any of it, and
+  # `x11 = false` drops the lot: Xvfb included, which is 60-odd MB of X server
+  # that such an image would never start (the xvfb and xsettingsd services
+  # already no-op under PIXELFLUX_WAYLAND).
+  ++ lib.optionals x11 (with pkgs; [
+    xorg-server xorg.xrandr xorg.xset xorg.xrdb xorg.xauth xorg.xhost xorg.xdpyinfo
+    xorg.xsetroot xorg.xprop xorg.xwininfo libxcvt xdotool xsettingsd
+    xorg.fontmiscmisc xorg.fontcursormisc
+    xclip xsel
+    openbox st xterm
+  ])
+  ++ extraPackages;
 
   # /usr is a symlink farm over every package's bin/share/lib/etc.
   rootEnv = buildEnv {
@@ -67,7 +82,7 @@ let
   '';
 
   etcFiles = runCommand "${name}-etc" { } ''
-    mkdir -p $out/etc/{pam.d,fonts,xdg/openbox,ssl/certs,sudoers.d}
+    mkdir -p $out/etc/{pam.d,fonts,ssl/certs,sudoers.d}
 
     cat > $out/etc/passwd <<'PW'
     root:x:0:0:root:/root:/bin/bash
@@ -137,8 +152,11 @@ let
     PR
     echo "selkies" > $out/etc/hostname
     cp ${fontsConf} $out/etc/fonts/fonts.conf
-    cp ${openboxRc} $out/etc/xdg/openbox/rc.xml
-    cp ${pkgs.openbox}/etc/xdg/openbox/menu.xml $out/etc/xdg/openbox/menu.xml
+    ${lib.optionalString x11 ''
+      mkdir -p $out/etc/xdg/openbox
+      cp ${openboxRc} $out/etc/xdg/openbox/rc.xml
+      cp ${pkgs.openbox}/etc/xdg/openbox/menu.xml $out/etc/xdg/openbox/menu.xml
+    ''}
     ln -s ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-bundle.crt
     ln -s ${pkgs.cacert}/etc/ssl/certs/ca-bundle.crt $out/etc/ssl/certs/ca-certificates.crt
   '';
@@ -201,7 +219,6 @@ let
     "XCURSOR_THEME=Adwaita"
     "XCURSOR_SIZE=24"
     "XKB_CONFIG_ROOT=${pkgs.xkeyboard_config}/share/X11/xkb"
-    "XVFB_FONT_PATH=${xorg.fontmiscmisc}/lib/X11/fonts/misc,${xorg.fontcursormisc}/lib/X11/fonts/misc"
     "GIO_EXTRA_MODULES=${pkgs.dconf.lib}/lib/gio/modules"
     "GSETTINGS_SCHEMA_DIR=/usr/share/glib-2.0/schemas"
     "LIBGL_ALWAYS_SOFTWARE=1"
@@ -213,6 +230,8 @@ let
     "DISABLE_ZINK=false"
     "DISABLE_DRI3=false"
     "TERMINAL=st"
+  ] ++ lib.optionals x11 [
+    "XVFB_FONT_PATH=${xorg.fontmiscmisc}/lib/X11/fonts/misc,${xorg.fontcursormisc}/lib/X11/fonts/misc"
   ] ++ lib.optionals wayland [
     "PIXELFLUX_WAYLAND=true"
     "SELKIES_WAYLAND_SOCKET_INDEX=${toString waylandSocketIndex}"
