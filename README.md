@@ -140,9 +140,10 @@ as its target. Two things make it a better fit here than niri or Hyprland:
   `vblank_mode=0` workaround the niri and Hyprland images need does not apply.
   Those two block in `eglSwapBuffers` until pixelflux sends a frame callback, and
   pixelflux only renders while a browser is attached; scoot runs its own 16 ms
-  frame timer and its `present()` drops a frame rather than blocking. That is
-  also why this image needs no equivalent of `noctalia-start.sh`: Quickshell maps
-  its layer surfaces whether or not anyone is streaming yet.
+  frame timer and its `present()` drops a frame rather than blocking. Confirmed
+  on the cluster: with no browser attached, ghostty renders and fuzzel maps an
+  overlay layer surface. (This image still wraps noctalia in a retry loop, but
+  for a different failure — see below.)
 - **It has a control socket.** Every layout action, plus synthetic key, text,
   pointer and click input, screenshots and window/output introspection, is a
   request on a Unix socket (`$XDG_RUNTIME_DIR/scoot.sock`, mode 0600, same-uid
@@ -155,6 +156,16 @@ wallpaper, control center, lock screen) the niri image runs — it reaches scoot
 through `wlr-layer-shell-v1` and `ext-workspace-v1`, with no compositor-specific
 integration to configure. It is started from `/defaults/scoot-session.sh`, which
 scoot runs as its `--` command, because scoot's config has no `spawn-at-startup`.
+
+That script supervises noctalia and restarts it if it fails to map anything,
+because **noctalia's first launch against a fresh `/config` wedges**: it loads
+its config, scans for plugins, and then stops — no fonts, no wallpaper scan, no
+layer surfaces, and `settingsVersion` left at `0` where a healthy config reaches
+`59`. It does not recover on its own; killing it does, and the second run maps
+the bar in well under a minute. The health check is `scoot msg outputs`: when a
+bar takes its layer-shell exclusive zone, the output's `usable` rect shrinks
+below its `rect`, which is a direct read of "is the shell up" rather than the
+niri image's grep over `niri msg layers`.
 
 Keys are bound **twice, on Alt and on Super**: Super is scoot's own modifier, but
 a browser tab rarely sees it, so the Alt column is what works without touching

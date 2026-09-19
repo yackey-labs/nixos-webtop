@@ -30,7 +30,11 @@ while true; do
       sleep 5; continue          # healthy: bar/dock/wallpaper mapped
     fi
     log "quickshell running but no layers mapped; restarting"
-    pkill -x quickshell; sleep 1
+    # -f, NOT -x: the process is a wrapper whose comm is truncated to
+    # `.quickshell-wra`, so `pkill -x quickshell` matches nothing and this
+    # branch silently did nothing at all -- the loop would notice the wedge
+    # and then fail to act on it, every five seconds, forever.
+    pkill -f quickshell; sleep 1
   fi
 
   rm -rf "${XDG_RUNTIME_DIR}/quickshell/by-path" 2>/dev/null
@@ -51,7 +55,7 @@ while true; do
     log "noctalia exited ($?); will relaunch"
   else
     log "noctalia did not map a shell in time (no client streaming yet?); retrying"
-    kill "$NPID" 2>/dev/null; pkill -x quickshell 2>/dev/null
+    kill "$NPID" 2>/dev/null; pkill -f quickshell 2>/dev/null
   fi
   sleep 3
 done
