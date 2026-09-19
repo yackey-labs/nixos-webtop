@@ -1,0 +1,92 @@
+# scoot config for the Nix Selkies webtop -- Catppuccin Mocha, to match the
+# niri and Hyprland images. Copied to ~/.config/scoot/config.toml on first
+# run only; edit it there freely.
+#
+# Every setting is read once at startup -- scoot has no config reload, so a
+# change here means restarting the `de` service (or the container).
+
+[layout]
+# scoot clamps focus_ring_width to half of gap, so a gap this size leaves
+# room for the 3px ring below and nothing wider.
+gap = 8
+# Fractions of the output width that Super+R cycles through. The full-width
+# entry matters more here than on a real display: a browser window is often
+# the only thing on screen.
+column_widths = [0.333, 0.5, 0.667, 1.0]
+default_column_width = 1
+
+[appearance]
+focus_ring_width = 3
+focus_ring_active_color = "#cba6f7"    # mauve
+focus_ring_inactive_color = "#313244"  # surface0
+background_color = "#1e1e2e"           # base
+# Named cursor shapes (wp-cursor-shape-v1) come out of this theme; the image
+# installs it via themePackages. scoot's own drawn cursor is --tty only, so
+# cursor_size/cursor_color would do nothing here.
+cursor_theme = "catppuccin-mocha-dark-cursors"
+prefer_no_csd = true
+
+# scoot's 18 built-in binds all live on Super. They stay bound -- a user bind
+# replaces a default, and there is no unbind -- and everything below is either
+# an addition or a replacement of one of them.
+[binds]
+# Everything is bound TWICE: once on Alt, once on Super.
+#
+# Super is scoot's own modifier and stays bound, but a browser almost never
+# sees it -- the host desktop grabs it first, so in a Selkies tab it only
+# reaches the session with the sidebar's keyboard-lock toggle on. Alt does
+# reach the tab, which makes the Alt column the one that works the moment you
+# open the page. Two combos that resolve to the same actual keys would both be
+# dropped, but these are different modifiers, so both sets load.
+#
+# The cost of the Alt column is inside terminals: Alt+b, Alt+d and Alt+l are
+# readline's backward-word, kill-word and downcase-word. Use the Super
+# equivalents there, or delete the Alt lines you do not want -- this file is
+# seeded to ~/.config/scoot/config.toml on first run and is yours after that.
+
+# ── Windows and columns ──────────────────────────────────────────────────
+"alt+h" = "focus-column left"
+"alt+l" = "focus-column right"
+"alt+j" = "focus-window down"
+"alt+k" = "focus-window up"
+"alt+shift+h" = "move-column left"
+"alt+shift+l" = "move-column right"
+"alt+shift+j" = "move-window down"
+"alt+shift+k" = "move-window up"
+"alt+ctrl+h" = "consume-or-expel left"
+"alt+ctrl+l" = "consume-or-expel right"
+"alt+r" = "cycle-column-width"
+"alt+q" = "close"
+
+# ── Workspaces ───────────────────────────────────────────────────────────
+# scoot's own defaults put these on Super+Ctrl; Ctrl is free on the Alt side,
+# so Alt+Ctrl+h/l is consume-or-expel above and workspaces get Alt+u/i.
+"alt+i" = "focus-workspace up"
+"alt+u" = "focus-workspace down"
+"alt+shift+i" = "move-window-to-workspace up"
+"alt+shift+u" = "move-window-to-workspace down"
+
+# ── Applications ─────────────────────────────────────────────────────────
+# The noctalia IPC targets are the ones the niri image binds. Action strings
+# are split on whitespace and never run through a shell. The lock bind is on
+# Ctrl+Shift+L on both sides rather than niri's Super+Alt+L: that combo is
+# scoot's own consume-or-expel-right, and locking the screen is not worth
+# taking a layout key away for.
+"alt+Return" = "spawn ghostty"
+"alt+t" = "spawn ghostty"
+"alt+d" = "spawn noctalia-shell ipc call launcher toggle"
+"alt+b" = "spawn chromium"
+"alt+e" = "spawn nautilus"
+"alt+ctrl+shift+l" = "spawn noctalia-shell ipc call lockScreen toggle"
+
+"super+Return" = "spawn ghostty"
+"super+t" = "spawn ghostty"
+"super+d" = "spawn noctalia-shell ipc call launcher toggle"
+"super+b" = "spawn chromium"
+"super+e" = "spawn nautilus"
+"super+ctrl+shift+l" = "spawn noctalia-shell ipc call lockScreen toggle"
+
+# Quitting the session is left on Super alone, deliberately: scoot puts it on
+# Super+Shift+e rather than Super+Shift+q so a slipped finger cannot end the
+# session, and an Alt copy of it -- one key from Alt+shift+... nothing, but
+# well inside the range a browser forwards -- gives that care back up.

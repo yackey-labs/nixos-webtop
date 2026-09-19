@@ -3,7 +3,16 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
-  outputs = { self, nixpkgs }:
+  # scoot ships its own flake, so it is consumed from there rather than
+  # re-packaged under nix/ the way selkies, pixelflux and gst-wayland-display
+  # are -- none of those has one. Its nixpkgs follows ours: scoot's flake pins
+  # a specific nixpkgs revision for its dev VM, and honouring that pin here
+  # would put a second glibc, wayland, libinput and udev in an image that
+  # already has one of each.
+  inputs.scoot.url = "github:scoot-sh/scoot";
+  inputs.scoot.inputs.nixpkgs.follows = "nixpkgs";
+
+  outputs = { self, nixpkgs, scoot }:
     let
       systems = [ "x86_64-linux" "aarch64-linux" ];
       lib = nixpkgs.lib;
@@ -13,6 +22,11 @@
           config.allowUnfree = true;
           overlays = [ self.overlays.default ];
         }));
+      # Bound here rather than inside the overlay because the scope down there
+      # binds the name `scoot` to this very package: an attribute set is not
+      # recursive, so `scoot = scoot.packages...` would in fact resolve, but
+      # only for a reader who checks that it is not a `rec`.
+      scootFor = system: scoot.packages.${system}.default;
     in
     {
       overlays.default = final: prev: {
@@ -47,6 +61,9 @@
         });
 
         selkiesPackages = lib.makeScope final.newScope (self: {
+          inherit (final) noctalia-shell;
+          scoot = scootFor final.stdenv.hostPlatform.system;
+
           # Pinned upstream sources (same commit linuxserver builds from).
           selkiesSrc = final.fetchFromGitHub {
             owner = "selkies-project";
@@ -206,6 +223,44 @@
             ]) ++ self.themePackages;
           };
 
+          # scoot (scrolling-tiling Wayland compositor, niri-shaped) with the
+          # same noctalia-shell desktop the niri image runs, nested the same
+          # way. scoot was written with this image's exact shape in mind: it
+          # composites with pixman on the CPU, so it needs no GPU and no EGL,
+          # and it exposes a control socket that can inject keys, click and
+          # screenshot -- a session an agent can drive as easily as a person.
+          #
+          # There is NO XWayland here (scoot has none), so xwayland-satellite
+          # is absent and every application in this list is Wayland-native.
+          image-webtop-scoot = self.mkSelkiesImage {
+            name = "selkies-nix-webtop-scoot";
+            title = "Nix scoot";
+            wayland = true;
+            waylandSocketIndex = 2;
+            startwm = ./rootfs/defaults/startwm-scoot.sh;
+            configTemplates = {
+              scoot = ./rootfs/config/scoot;
+              ghostty = ./rootfs/config/ghostty;
+              foot = ./rootfs/config/foot;
+              fuzzel = ./rootfs/config/fuzzel;
+            };
+            extraEnv = [
+              "TERMINAL=ghostty"
+              "XDG_CURRENT_DESKTOP=scoot"
+              "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
+              "XCURSOR_SIZE=24"
+            ];
+            extraPackages = (with final; [
+              ghostty
+              foot
+              fuzzel
+              nautilus
+              chromium
+              self.chromiumWrapped
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
+            ]) ++ [ self.scoot self.noctalia-shell ] ++ self.themePackages;
+          };
+
           # Hyprland on gst-wayland-display rather than pixelflux, to get a
           # wl_compositor v6 parent. See rootfs/defaults/startwm-hyprland-gst.sh.
           image-webtop-hyprland-gst = self.mkSelkiesImage {
@@ -294,8 +349,9 @@
         inherit (pkgs.selkiesPackages)
           selkies selkies-web selkies-addons pixelflux pcmflux nginx-selkies
           gst-wayland-display
+          scoot
           image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland
-          image-webtop-hyprland-gst;
+          image-webtop-hyprland-gst image-webtop-scoot;
         default = pkgs.selkiesPackages.image-webtop-i3;
       });
 

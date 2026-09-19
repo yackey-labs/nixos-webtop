@@ -30,6 +30,7 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-webtop-i3`  | `image-base` + i3, i3status, dmenu, xfce4-terminal, Chromium | `webtop:arch-i3`             |
 | `image-webtop-niri`| Wayland mode: niri + noctalia-shell, foot, Chromium (Wayland), nautilus, xwayland-satellite | no direct equivalent (closest: `webtop:arch-i3` with `PIXELFLUX_WAYLAND=true`/sway) |
 | `image-webtop-hyprland`| Wayland mode: Hyprland + waybar, fuzzel, mako, swaybg, foot, Chromium | no equivalent |
+| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + noctalia-shell, ghostty, foot, fuzzel, nautilus, Chromium (Wayland) | no equivalent |
 
 Both are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
 
@@ -106,6 +107,7 @@ image-webtop-xfce = self.mkSelkiesImage {
 - Selkies commit and hashes: `selkiesSrc` in `flake.nix`, `nix/python-xlib-selkies.nix`.
 - pixelflux/pcmflux wheels: the tables in `nix/pixelflux.nix` and `nix/pcmflux.nix`
   (add a row for the Python version nixpkgs ships; hashes from `pip download` or PyPI).
+- scoot: a flake input, not a vendored source — `nix flake update scoot`.
 - Frontend: regenerate `frontend/locks/*.package-lock.json` with
   `npm install --package-lock-only` in each `addons/*` directory, then
   `nix run nixpkgs#prefetch-npm-deps -- <lockfile>` for the new `npmDepsHash`.
@@ -122,6 +124,55 @@ started from niri's config (`spawn-at-startup`). The seeded config lives in
 Keys: `Mod+T` foot, `Mod+D` noctalia launcher, `Mod+B` Chromium, `Mod+E` nautilus,
 `Mod+Shift+/` hotkey overlay. `Mod` is Super in niri; in a browser that usually needs the
 Selkies sidebar's keyboard-lock toggle or remapping to avoid the host grabbing the key.
+
+## scoot image
+
+[scoot](https://github.com/scoot-sh/scoot) is a scrolling-tiling Wayland
+compositor in the shape of niri, and it was written with an image like this one
+as its target. Two things make it a better fit here than niri or Hyprland:
+
+- **It renders on the CPU.** Compositing goes through [pixman](http://pixman.org/),
+  so there is no GPU, no EGL and no llvmpipe in the path — which also means the
+  `vblank_mode=0` workaround the niri and Hyprland images need does not apply.
+  Those two block in `eglSwapBuffers` until pixelflux sends a frame callback, and
+  pixelflux only renders while a browser is attached; scoot runs its own 16 ms
+  frame timer and its `present()` drops a frame rather than blocking. That is
+  also why this image needs no equivalent of `noctalia-start.sh`: Quickshell maps
+  its layer surfaces whether or not anyone is streaming yet.
+- **It has a control socket.** Every layout action, plus synthetic key, text,
+  pointer and click input, screenshots and window/output introspection, is a
+  request on a Unix socket (`$XDG_RUNTIME_DIR/scoot.sock`, mode 0600, same-uid
+  only). Inside the container: `scoot msg windows`, `scoot msg type "hello"`,
+  `scoot msg screenshot --out /tmp/shot.png`. An agent driving the desktop is a
+  first-class client rather than something bolted on with `xdotool`.
+
+The desktop on top is the same noctalia-shell (bar, launcher, notifications,
+wallpaper, control center, lock screen) the niri image runs — it reaches scoot
+through `wlr-layer-shell-v1` and `ext-workspace-v1`, with no compositor-specific
+integration to configure. It is started from `/defaults/scoot-session.sh`, which
+scoot runs as its `--` command, because scoot's config has no `spawn-at-startup`.
+
+Keys are bound **twice, on Alt and on Super**: Super is scoot's own modifier, but
+a browser tab rarely sees it, so the Alt column is what works without touching
+the Selkies sidebar's keyboard-lock toggle. `Alt+h/j/k/l` move around,
+`Alt+Shift+h/j/k/l` move windows, `Alt+q` closes, `Alt+r` cycles column width,
+`Alt+Return`/`Alt+t` ghostty, `Alt+d` the noctalia launcher, `Alt+b` Chromium,
+`Alt+e` nautilus. Quitting the session stays on `Super+Shift+e` alone. The seeded
+config is `rootfs/config/scoot/config.toml`, copied to `/config/.config/scoot/` on
+first run only; inside a terminal prefer the Super bindings, since `Alt+b`/`Alt+d`
+are readline's backward-word and kill-word.
+
+Two limits worth knowing before deploying it:
+
+- **No XWayland.** X11-only applications do not run, and `xwayland-satellite` is
+  not installed (it needs `xwayland-shell-v1`, which scoot does not implement).
+  Everything in the image is Wayland-native; Chromium runs under
+  `--ozone-platform=wayland` through the usual wrapper.
+- **Fixed resolution.** scoot applies the host's size from its *first*
+  `xdg_surface` configure and never resizes again, so the session runs at
+  `SELKIES_MANUAL_WIDTH`x`SELKIES_MANUAL_HEIGHT` (default 1280x800) and a later
+  browser resize is letterboxed by pixelflux rather than reflowed. Restart the
+  `de` service to change it.
 
 ## Not ported (yet)
 

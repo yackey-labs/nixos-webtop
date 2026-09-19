@@ -18,7 +18,28 @@
     },
     "root": {
       "inputs": {
-        "nixpkgs": "nixpkgs"
+        "nixpkgs": "nixpkgs",
+        "scoot": "scoot"
+      }
+    },
+    "scoot": {
+      "inputs": {
+        "nixpkgs": [
+          "nixpkgs"
+        ]
+      },
+      "locked": {
+        "lastModified": 1789833124,
+        "narHash": "sha256-UuBnnss8NuyFSIJGZyVEjLoAvX8sz97K9f8vi1IePGU=",
+        "owner": "scoot-sh",
+        "repo": "scoot",
+        "rev": "7e415b659853eb2394f2d2eeb603bc72a661a31e",
+        "type": "github"
+      },
+      "original": {
+        "owner": "scoot-sh",
+        "repo": "scoot",
+        "type": "github"
       }
     }
   },
