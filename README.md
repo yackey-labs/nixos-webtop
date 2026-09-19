@@ -199,11 +199,16 @@ Two limits worth knowing before deploying it:
   not installed (it needs `xwayland-shell-v1`, which scoot does not implement).
   Everything in the image is Wayland-native; Chromium runs under
   `--ozone-platform=wayland` through the usual wrapper.
-- **Fixed resolution.** scoot applies the host's size from its *first*
-  `xdg_surface` configure and never resizes again, so the session runs at
-  `SELKIES_MANUAL_WIDTH`x`SELKIES_MANUAL_HEIGHT` (default 1280x800) and a later
-  browser resize is letterboxed by pixelflux rather than reflowed. Restart the
-  `de` service to change it.
+- **One output.** scoot drives a single output, so Selkies' second-screen mode
+  is off here — as it is for every Wayland image in this repo, since Selkies
+  only carves a single framebuffer into logical monitors on the X11 path.
+
+`SELKIES_MANUAL_WIDTH`/`HEIGHT` (default 1280x800) set the size the session
+*starts* at; browser resizes reflow from there. That was not true at first —
+scoot applied only its first `xdg_surface` configure and letterboxed every
+later one — and it is fixed upstream in
+[scoot-sh/scoot#144](https://github.com/scoot-sh/scoot/issues/144), found by
+running this image.
 
 ## Not ported (yet)
 
