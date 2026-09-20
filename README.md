@@ -204,7 +204,14 @@ Two limits worth knowing before deploying it:
   only carves a single framebuffer into logical monitors on the X11 path.
 
 `SELKIES_MANUAL_WIDTH`/`HEIGHT` (default 1280x800) set the size the session
-*starts* at; browser resizes reflow from there. That was not true at first —
+*starts* at; browser resizes reflow from there. `SELKIES_USE_CSS_SCALING`
+defaults to true here (and only here): phones report DPR 2-3, so a raw stream
+would be CSS-size times DPR -- 2.7+ MP on an iPhone -- while Selkies hands iOS
+browsers a Baseline-L3.0 decoder config that tops out around 0.4 MP, and
+WebKit decodes that mismatch to black with a live cursor (`?encoder=jpeg`
+works because it skips WebCodecs entirely). CSS scaling sends the CSS size and
+stretches locally, which fits the decoder and is 4-9x fewer pixels to encode;
+turn it off in the sidebar's screen settings on a desktop. That was not true at first —
 scoot applied only its first `xdg_surface` configure and letterboxed every
 later one — and it is fixed upstream in
 [scoot-sh/scoot#144](https://github.com/scoot-sh/scoot/issues/144), found by

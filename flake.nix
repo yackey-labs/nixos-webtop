@@ -254,6 +254,14 @@
               "XDG_CURRENT_DESKTOP=scoot"
               "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
               "XCURSOR_SIZE=24"
+              # Phones report DPR 2-3, so without this the coded stream is
+              # CSS-size x DPR (2.7+ MP on an iPhone) while iOS browsers get
+              # a Baseline-L3.0 decoder config (max ~0.4 MP) -- WebKit then
+              # decodes to black with a live cursor. CSS scaling sends the
+              # CSS size and stretches locally, which fits the decoder and
+              # is 4-9x fewer pixels to encode. Desktop users can toggle it
+              # back off in the sidebar's screen settings.
+              "SELKIES_USE_CSS_SCALING=true"
             ];
             extraPackages = (with final; [
               ghostty
