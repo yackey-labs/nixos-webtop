@@ -32,14 +32,35 @@ supervise_awww() {
 
 supervise_awww &
 
-# The daemon publishes its control socket asynchronously; wait for it before
-# the first image, else the set is refused and the session sits on the flat
-# background color. Re-setting later is always possible with another
-# `awww img` -- nothing here needs to repeat it.
-for _ in $(seq 1 30); do
-  if awww img "$WALLPAPER" >> "$LOG" 2>&1; then log "wallpaper set"; break; fi
-  sleep 1
-done
+# Keep the wallpaper fitted to the output shape. The logo is 3:2 landscape:
+# cropped fills a landscape screen edge to edge, but on a portrait phone it
+# would slice the cat in half, so there it fits the width instead and pads
+# top/bottom with the background color to match scoot's flat clear color.
+# The output follows the browser window for the life of the session, so this
+# re-checks on a timer rather than setting once. `--transition-type none`
+# keeps a re-set instant instead of replaying the fade, and a failed set
+# leaves MODE alone so the next tick retries it. Parsed with awk, not jq:
+# this image ships neither jq nor python (see the old noctalia health check
+# for why that matters) -- `scoot msg outputs` prints rect width/height
+# first, so the first two numbers are the ones wanted.
+MODE=""
+watch_wallpaper() {
+  while true; do
+    dims=$(scoot msg outputs 2>/dev/null | awk '/"width"|"height"/ { gsub(/[^0-9]/, ""); print }' | head -n 2)
+    W=$(echo "$dims" | sed -n 1p); H=$(echo "$dims" | sed -n 2p)
+    if [ -n "$W" ] && [ -n "$H" ]; then
+      if [ "$H" -gt "$W" ]; then want=fit; else want=crop; fi
+      if [ "$want" != "$MODE" ]; then
+        if awww img --resize "$want" --fill-color 000000ff --transition-type none "$WALLPAPER" >> "$LOG" 2>&1; then
+          log "wallpaper $want (${W}x${H})"; MODE="$want"
+        fi
+      fi
+    fi
+    sleep 15
+  done
+}
+
+watch_wallpaper &
 
 while true; do
   log "starting ashell"
