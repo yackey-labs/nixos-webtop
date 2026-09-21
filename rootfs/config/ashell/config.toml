@@ -1,0 +1,26 @@
+# ashell config for the Nix Selkies scoot webtop -- bar plus a launcher
+# button. Seeded to ~/.config/ashell/config.toml on first run only;
+# ashell hot-reloads it live, so edits apply without restarting anything.
+#
+# Backend selection is automatic. scoot has no dedicated integration, so
+# ashell uses its generic Wayland backend: workspaces come from
+# ext-workspace-v1 and the active window from
+# wlr-foreign-toplevel-management, both of which scoot implements. The
+# keyboard-layout module stays unavailable -- no protocol backs it here.
+
+position = "Top"
+layer = "Top"
+
+[modules]
+# The launcher is a custom button, not a built-in module: ashell has no
+# app launcher of its own. Left-click runs fuzzel; the click lands because
+# it is a plain layer-shell button press, the same path window buttons take.
+left = ["launcher", "Workspaces", "WindowTitle"]
+center = []
+right = ["Tray", "Tempo", "Settings"]
+
+[[CustomModule]]
+name = "launcher"
+type = "Button"
+command = "fuzzel"
+icon = ""

@@ -67,24 +67,23 @@ prefer_no_csd = true
 "alt+shift+u" = "move-window-to-workspace down"
 
 # ── Applications ─────────────────────────────────────────────────────────
-# The noctalia IPC targets are the ones the niri image binds. Action strings
-# are split on whitespace and never run through a shell. The lock bind is on
-# Ctrl+Shift+L on both sides rather than niri's Super+Alt+L: that combo is
-# scoot's own consume-or-expel-right, and locking the screen is not worth
-# taking a layout key away for.
+# Action strings are split on whitespace and never run through a shell.
+# The launcher is fuzzel, spawned fresh on every use -- it needs no daemon
+# the way a shell's built-in launcher would. There is no lock bind: this
+# session ships no screen locker (scoot implements ext-session-lock-v1, so
+# swaylock would work here if one is ever wanted), and the session sits
+# behind Selkies auth plus oauth2-proxy anyway.
 "alt+Return" = "spawn ghostty"
 "alt+t" = "spawn ghostty"
-"alt+d" = "spawn noctalia-shell ipc call launcher toggle"
+"alt+d" = "spawn fuzzel"
 "alt+b" = "spawn chromium"
 "alt+e" = "spawn nautilus"
-"alt+ctrl+shift+l" = "spawn noctalia-shell ipc call lockScreen toggle"
 
 "super+Return" = "spawn ghostty"
 "super+t" = "spawn ghostty"
-"super+d" = "spawn noctalia-shell ipc call launcher toggle"
+"super+d" = "spawn fuzzel"
 "super+b" = "spawn chromium"
 "super+e" = "spawn nautilus"
-"super+ctrl+shift+l" = "spawn noctalia-shell ipc call lockScreen toggle"
 
 # Quitting the session is left on Super alone, deliberately: scoot puts it on
 # Super+Shift+e rather than Super+Shift+q so a slipped finger cannot end the
