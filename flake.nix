@@ -106,6 +106,10 @@
           # Hyprland images cannot drift apart visually.
           themePackages = with final; [
             nerd-fonts.jetbrains-mono
+            # ashell draws ALL of its icons (including the launcher button)
+            # from "Symbols Nerd Font" by family name; without this package
+            # fc-match falls back to DejaVu and every glyph comes out blank.
+            nerd-fonts.symbols-only
             papirus-icon-theme
             # The bare `catppuccin-cursors` attribute is an aggregate and ships
             # NO share/icons theme directory -- with it alone /usr/share/icons
