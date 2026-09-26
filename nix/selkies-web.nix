@@ -59,6 +59,13 @@ let
     postPatch = ''
       cp ${../frontend/locks + "/${name}.package-lock.json"} package-lock.json
       cp ${core}/selkies-core.js src/
+      # Upstream builds the dashboards after web-core in one checkout: prebuild
+      # copy-core.js and postbuild copy-jsdb.js read ../selkies-web-core/dist/.
+      # Each dashboard builds in its own derivation here, so plant the already
+      # built core artifacts where those scripts expect them and let them run.
+      mkdir -p ../selkies-web-core/dist/jsdb
+      cp ${core}/selkies-core.js ../selkies-web-core/dist/selkies-core.js
+      cp -r ${core}/jsdb/. ../selkies-web-core/dist/jsdb/
     '';
     preBuild = patchNpmBinaries;
     installPhase = ''
