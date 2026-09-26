@@ -19,7 +19,7 @@ python3.pkgs.buildPythonApplication {
     # WebRTC mode deps (kept so --mode=webrtc works too)
     aioice av cffi cryptography google-crc32c pyee pylibsrtp pyopenssl aiohttp aiofiles
     # New in 2.0.0: microphone uplink, ICE/DNS, GPU stats, main loop.
-    pulsectl-asyncio dnspython uvloop pynvml
+    pulsectl-asyncio dnspython uvloop nvidia-ml-py
   ];
 
   pythonRelaxDeps = true;

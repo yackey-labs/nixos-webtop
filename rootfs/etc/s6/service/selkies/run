@@ -6,4 +6,9 @@ fi
 until [ -S /run/pulse/native ]; do sleep 0.5; done
 
 cd /tmp
-exec s6-setuidgid abc selkies --addr="localhost" --mode="websockets"
+# selkies 2.0.0 enables its own basic auth by default and refuses to start
+# without a password -- and its username defaults to "ubuntu" while our nginx
+# htpasswd user is $CUSTOM_USER (abc). Authentication here stays where it has
+# always been, at the perimeter (nginx htpasswd from PASSWORD, oauth2-proxy on
+# the cluster), so the backend serves open on loopback exactly as before.
+exec s6-setuidgid abc selkies --addr="localhost" --mode="websockets" --enable-basic-auth=false
