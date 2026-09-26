@@ -59,18 +59,22 @@ let
     postPatch = ''
       cp ${../frontend/locks + "/${name}.package-lock.json"} package-lock.json
       cp ${core}/selkies-core.js src/
-      # Upstream builds the dashboards after web-core in one checkout: prebuild
-      # copy-core.js and postbuild copy-jsdb.js read ../selkies-web-core/dist/.
-      # Each dashboard builds in its own derivation here, so plant the already
-      # built core artifacts where those scripts expect them and let them run.
-      mkdir -p ../selkies-web-core/dist/jsdb
-      cp ${core}/selkies-core.js ../selkies-web-core/dist/selkies-core.js
-      cp -r ${core}/jsdb/. ../selkies-web-core/dist/jsdb/
+      # Upstream 2.0.0 builds the dashboards after web-core in one checkout:
+      # prebuild copy-core.js and postbuild copy-jsdb.js read the core's
+      # ../selkies-web-core/dist/ build artifacts, which do not exist when
+      # each dashboard builds in its own derivation (and the npm-deps fetcher
+      # sandbox will not even let us plant them there). Strip those two hooks
+      # and do their jobs with the already built core outputs instead: the
+      # core bundle above, and dist/jsdb in installPhase below. sed rather than
+      # node: postPatch also runs in the npm-deps fetcher sandbox, where node
+      # is not on PATH yet.
+      sed -i '/"prebuild": "node copy-core.js",/d; /"postbuild": "node copy-jsdb.js",/d' package.json
     '';
     preBuild = patchNpmBinaries;
     installPhase = ''
       runHook preInstall
       mkdir -p $out/src $out/nginx
+      cp -r ${core}/jsdb dist/jsdb
       cp -r dist/. $out/
       cp ${core}/selkies-core.js $out/src/
       cp ${selkiesSrc}/addons/universal-touch-gamepad/universalTouchGamepad.js $out/src/
