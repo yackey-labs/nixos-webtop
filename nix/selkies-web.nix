@@ -74,7 +74,6 @@ let
     installPhase = ''
       runHook preInstall
       mkdir -p $out/src $out/nginx
-      cp -r ${core}/jsdb dist/jsdb
       cp -r dist/. $out/
       cp ${core}/selkies-core.js $out/src/
       cp ${selkiesSrc}/addons/universal-touch-gamepad/universalTouchGamepad.js $out/src/
