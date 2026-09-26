@@ -30,7 +30,7 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-webtop-i3`  | `image-base` + i3, i3status, dmenu, xfce4-terminal, Chromium | `webtop:arch-i3`             |
 | `image-webtop-niri`| Wayland mode: niri + noctalia-shell, foot, Chromium (Wayland), nautilus, xwayland-satellite | no direct equivalent (closest: `webtop:arch-i3` with `PIXELFLUX_WAYLAND=true`/sway) |
 | `image-webtop-hyprland`| Wayland mode: Hyprland + waybar, fuzzel, mako, swaybg, foot, Chromium | no equivalent |
-| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + noctalia-shell, ghostty, foot, fuzzel, nautilus, Chromium (Wayland) | no equivalent |
+| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + ashell bar, fuzzel, awww wallpaper (scoot cat), ghostty, foot, nautilus, Chromium (Wayland) | no equivalent |
 
 Both are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
 
@@ -151,31 +151,38 @@ as its target. Two things make it a better fit here than niri or Hyprland:
   `scoot msg screenshot --out /tmp/shot.png`. An agent driving the desktop is a
   first-class client rather than something bolted on with `xdotool`.
 
-The desktop on top is the same noctalia-shell (bar, launcher, notifications,
-wallpaper, control center, lock screen) the niri image runs — it reaches scoot
-through `wlr-layer-shell-v1` and `ext-workspace-v1`, with no compositor-specific
-integration to configure. It is started from `/defaults/scoot-session.sh`, which
-scoot runs as its `--` command, because scoot's config has no `spawn-at-startup`.
+The desktop on top is deliberately thin: [ashell](https://github.com/MalpenZibo/ashell)
+for the top bar (launcher button, workspaces, window title, tray, clock,
+settings), [fuzzel](https://codeberg.org/dnkl/fuzzel) as the launcher,
+spawned fresh on every use, and [awww](https://codeberg.org/LGFae/awww) for
+the wallpaper -- scoot's own cat logo, vendored from the scoot repo into
+`/defaults/scoot-cat.png`. ashell has no dedicated scoot integration, so it
+uses its generic Wayland backend: workspaces via `ext-workspace-v1` and the
+active window via `wlr-foreign-toplevel-management`, both of which scoot
+implements. Everything is started from `/defaults/scoot-session.sh`, which
+scoot runs as its `--` command, because scoot's config has no
+`spawn-at-startup`. awww draws on the background layer without reserving
+space; ashell reserves its bar height, so `scoot msg outputs` reporting
+`usable` below `rect` remains the "shell is up" signal.
 
-That script supervises noctalia and restarts it if it fails to map anything,
-because **noctalia's first launch against a fresh `/config` wedges**: it loads
-its config, scans for plugins, and then stops — no fonts, no wallpaper scan, no
-layer surfaces, and `settingsVersion` left at `0` where a healthy config reaches
-`59`. It does not recover on its own; killing it does, and the second run maps
-the bar in well under a minute. The health check is `scoot msg outputs`: when a
-bar takes its layer-shell exclusive zone, the output's `usable` rect shrinks
-below its `rect`, which is a direct read of "is the shell up" rather than the
-niri image's grep over `niri msg layers`.
+There is intentionally no desktop shell and no screen locker in this image:
+the bar is a plain layer-shell client whose buttons take the same click path
+window buttons do. (scoot implements `ext-session-lock-v1`, so swaylock
+would work here if one is ever wanted; the session sits behind Selkies auth
+plus oauth2-proxy regardless.)
 
 Keys are bound **twice, on Alt and on Super**: Super is scoot's own modifier, but
 a browser tab rarely sees it, so the Alt column is what works without touching
 the Selkies sidebar's keyboard-lock toggle. `Alt+h/j/k/l` move around,
 `Alt+Shift+h/j/k/l` move windows, `Alt+q` closes, `Alt+r` cycles column width,
-`Alt+Return`/`Alt+t` ghostty, `Alt+d` the noctalia launcher, `Alt+b` Chromium,
-`Alt+e` nautilus. Quitting the session stays on `Super+Shift+e` alone. The seeded
+`Alt+Return`/`Alt+t` ghostty, `Alt+d` the fuzzel launcher, `Alt+b` Chromium,
+`Alt+e` nautilus. The bar's leftmost button is the same launcher: plain
+layer-shell left-click straight into fuzzel. Quitting the session stays on
+`Super+Shift+e` alone. The seeded
 config is `rootfs/config/scoot/config.toml`, copied to `/config/.config/scoot/` on
 first run only; inside a terminal prefer the Super bindings, since `Alt+b`/`Alt+d`
-are readline's backward-word and kill-word.
+are readline's backward-word and kill-word. ashell's own config is
+`rootfs/config/ashell/config.toml`, hot-reloaded live by ashell itself.
 
 Because scoot has no XWayland, this is the only image that carries **no X11
 userland at all** — `mkSelkiesImage { x11 = false; }` drops Xvfb, openbox, st,

@@ -106,6 +106,10 @@
           # Hyprland images cannot drift apart visually.
           themePackages = with final; [
             nerd-fonts.jetbrains-mono
+            # ashell draws ALL of its icons (including the launcher button)
+            # from "Symbols Nerd Font" by family name; without this package
+            # fc-match falls back to DejaVu and every glyph comes out blank.
+            nerd-fonts.symbols-only
             papirus-icon-theme
             # The bare `catppuccin-cursors` attribute is an aggregate and ships
             # NO share/icons theme directory -- with it alone /usr/share/icons
@@ -223,12 +227,19 @@
             ]) ++ self.themePackages;
           };
 
-          # scoot (scrolling-tiling Wayland compositor, niri-shaped) with the
-          # same noctalia-shell desktop the niri image runs, nested the same
-          # way. scoot was written with this image's exact shape in mind: it
+          # scoot (scrolling-tiling Wayland compositor, niri-shaped) with a
+          # deliberately thin desktop: ashell (bar), fuzzel (launcher) and
+          # awww (wallpaper), nested the same way the niri image nests.
+          # scoot was written with this image's exact shape in mind: it
           # composites with pixman on the CPU, so it needs no GPU and no EGL,
           # and it exposes a control socket that can inject keys, click and
           # screenshot -- a session an agent can drive as easily as a person.
+          #
+          # There is deliberately NO desktop shell here (no noctalia-shell):
+          # the bar is a plain layer-shell client whose buttons take the
+          # same click path window buttons do, the launcher is spawned
+          # fresh per use, and the wallpaper is a static image. Fewer moving
+          # pieces between a click and its target.
           #
           # There is NO XWayland here (scoot has none), so xwayland-satellite
           # is absent and every application in this list is Wayland-native.
@@ -245,6 +256,7 @@
             startwm = ./rootfs/defaults/startwm-scoot.sh;
             configTemplates = {
               scoot = ./rootfs/config/scoot;
+              ashell = ./rootfs/config/ashell;
               ghostty = ./rootfs/config/ghostty;
               foot = ./rootfs/config/foot;
               fuzzel = ./rootfs/config/fuzzel;
@@ -267,12 +279,14 @@
               ghostty
               foot
               fuzzel
+              ashell
+              awww
               nautilus
               chromium
               self.chromiumWrapped
               self.wtypeViaScoot
               (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
-            ]) ++ [ self.scoot self.noctalia-shell ] ++ self.themePackages;
+            ]) ++ [ self.scoot ] ++ self.themePackages;
           };
 
           # Hyprland on gst-wayland-display rather than pixelflux, to get a
