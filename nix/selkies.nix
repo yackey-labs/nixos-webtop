@@ -13,6 +13,15 @@ python3.pkgs.buildPythonApplication {
       --replace-fail '"python-xlib @ https://github.com/selkies-project/python-xlib/archive/master.zip",' '"python-xlib",'
   '';
 
+  # Pinned rev 348bc4f reads cs.use_openh264 unconditionally in
+  # _get_capture_settings but only assigns it when the encoder is not jpeg,
+  # so a jpeg client (e.g. ?encoder=jpeg, the documented iOS path) kills
+  # video capture with AttributeError and the session never leaves "waiting
+  # for stream". Upstream has since refactored past this code; until the pin
+  # moves, default the attribute here. See
+  # nix/patches/selkies-jpeg-use-openh264.patch.
+  patches = [ ./patches/selkies-jpeg-use-openh264.patch ];
+
   build-system = with python3.pkgs; [ setuptools wheel ];
 
   dependencies = with python3.pkgs; [
