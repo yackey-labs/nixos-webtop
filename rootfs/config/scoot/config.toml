@@ -44,6 +44,15 @@ prefer_no_csd = true
 # equivalents there, or delete the Alt lines you do not want -- this file is
 # seeded to ~/.config/scoot/config.toml on first run and is yours after that.
 
+# ghostty maps with equal minimum and maximum size, which trips scoot's
+# `[floating] auto` fixed-size heuristic and opens every terminal floating
+# (foot tiles because it never does this). The rule has the last word over
+# the heuristics, so ghostty stays in the strip. `Super+Shift+Space` (a
+# built-in default, left bound) still floats anything on demand.
+[[window_rule]]
+match_app_id = "*ghostty*"
+float = false
+
 # ── Windows and columns ──────────────────────────────────────────────────
 "alt+h" = "focus-column left"
 "alt+l" = "focus-column right"
