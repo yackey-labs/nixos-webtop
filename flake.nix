@@ -289,6 +289,52 @@
             ]) ++ [ self.scoot ] ++ self.themePackages;
           };
 
+          # Scoot dev flavour: the same nested session minus everything under
+          # test. No Chromium, no file manager, no bar, no wallpaper -- just
+          # foot, fuzzel and the control socket, so rebuilds stay small and
+          # local checkouts of scoot (and later scootbar/scootbg) slot in via
+          # --override-input without fighting the things they replace:
+          #   ./build.sh image-scoot-dev
+          #   nix build .#image-scoot-dev --override-input scoot path:../scoot
+          # Roughly half the unpacked size of image-webtop-scoot, and shares
+          # most layers with it, so keeping both in the registry is cheap.
+          image-scoot-dev = self.mkSelkiesImage {
+            name = "selkies-nix-scoot-dev";
+            title = "Scoot dev";
+            wayland = true;
+            waylandSocketIndex = 2;
+            # Same reasoning as the prod scoot image: nothing here can reach
+            # an X server, so the X userland stays out.
+            x11 = false;
+            startwm = ./rootfs/defaults/startwm-scoot-dev.sh;
+            configTemplates = {
+              scoot = ./rootfs/config/scoot;
+              foot = ./rootfs/config/foot;
+              fuzzel = ./rootfs/config/fuzzel;
+            };
+            extraEnv = [
+              "TERMINAL=foot"
+              "XDG_CURRENT_DESKTOP=scoot"
+              "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
+              "XCURSOR_SIZE=24"
+              # Same phone-decoder reasoning as the prod image: CSS scaling
+              # keeps the coded stream inside iOS's Baseline-L3.0 budget.
+              "SELKIES_USE_CSS_SCALING=true"
+            ];
+            extraPackages = (with final; [
+              foot
+              fuzzel
+              self.wtypeViaScoot
+              # Kept deliberately small: one terminal font and one cursor
+              # theme. No icon themes -- nothing here renders icons (no bar,
+              # no file manager); hicolor from the base packages covers theme
+              # inheritance lookups.
+              nerd-fonts.jetbrains-mono
+              catppuccin-cursors.mochaDark
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${foot}/bin/foot "$@"'')
+            ]) ++ [ self.scoot ];
+          };
+
           # Hyprland on gst-wayland-display rather than pixelflux, to get a
           # wl_compositor v6 parent. See rootfs/defaults/startwm-hyprland-gst.sh.
           image-webtop-hyprland-gst = self.mkSelkiesImage {
@@ -414,7 +460,7 @@
           gst-wayland-display
           scoot
           image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland
-          image-webtop-hyprland-gst image-webtop-scoot;
+          image-webtop-hyprland-gst image-webtop-scoot image-scoot-dev;
         default = pkgs.selkiesPackages.image-webtop-i3;
       });
 
