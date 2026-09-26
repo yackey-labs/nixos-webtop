@@ -30,7 +30,7 @@ let
     version = "1.0.0";
     src = selkiesSrc;
     sourceRoot = "${selkiesSrc.name}/addons/selkies-web-core";
-    npmDepsHash = "sha256-HTpkmPdTJHPssWsYTNkGTAXUZaEwA/jIO8pU8eE1msQ=";
+    npmDepsHash = "sha256-reZYWs1KNqBGnMX95PZW6B/epaarA7poq9F/nrtJv70=";
     npmRebuildFlags = [ "--ignore-scripts" ];
     postPatch = ''
       cp ${../frontend/locks/selkies-web-core.package-lock.json} package-lock.json
@@ -73,8 +73,8 @@ let
     '';
   };
 
-  dashboard = mkDashboard "selkies-dashboard" "sha256-DsR/OLYwq4pupGDwKyFeMQWXAdAcc61Vjpabr92ebB8=";
-  dashboardWish = mkDashboard "selkies-dashboard-wish" "sha256-eNhHhQa7JMh6/6BvezDotQaz+MUtcXsR6R3NTa9ozQo=";
+  dashboard = mkDashboard "selkies-dashboard" "sha256-jdXhb9dr7nn3PuMB43yWb+8AKlzm7pelGmRn7i/8bs4=";
+  dashboardWish = mkDashboard "selkies-dashboard-wish" "sha256-7I62xsNpFsTgJ6jR5Hh+8EFbJS2nT9ig3Y3BnZXfPkY=";
 in
 stdenv.mkDerivation {
   pname = "selkies-web";

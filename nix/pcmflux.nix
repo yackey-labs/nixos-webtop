@@ -1,14 +1,16 @@
 # pcmflux: Selkies' PulseAudio capture + Opus encoder (wheel-only upstream).
+# Taken from PyPI, the same wheels selkies 2.0.0 itself was released against
+# (pyproject pins pcmflux~=2.1.0).
 { lib, stdenv, buildPythonPackage, fetchurl, python, autoPatchelfHook, xorg }:
 let
   wheels = {
     "3.13" = {
-      x86_64-linux = { name = "pcmflux-2.0.0-cp313-cp313-manylinux_2_28_x86_64.whl";  url = "https://files.pythonhosted.org/packages/6d/e5/ab80cd4d0b111bcda3cfe211a2f84b961dabaea8e1c9fb8e9118ca533e89/pcmflux-2.0.0-cp313-cp313-manylinux_2_28_x86_64.whl";  hash = "sha256-KOwrMzJwhbANnFdz6Ak7hSVoN7ygMlexZ4acmrRYSrE="; };
-      aarch64-linux = { name = "pcmflux-2.0.0-cp313-cp313-manylinux_2_28_aarch64.whl"; url = "https://files.pythonhosted.org/packages/0f/9b/e4bf1d7da63951e3ca5c9dc57a6e0e41e0275b4451d55d7bb63bfe78b39b/pcmflux-2.0.0-cp313-cp313-manylinux_2_28_aarch64.whl"; hash = "sha256-wJJBmiKLqSBYsrGYLKYZAAbqj+IHRj3N/PalYyxXvU0="; };
+      x86_64-linux = { name = "pcmflux-2.1.0-cp313-cp313-manylinux_2_28_x86_64.whl";  url = "https://files.pythonhosted.org/packages/ec/fe/47d8b69a2434bc1ca76b0456e9ac7ee84719205357d34589d4e878a5ee59/pcmflux-2.1.0-cp313-cp313-manylinux_2_28_x86_64.whl";  hash = "sha256:7c214ce71d529409cde42db9521610b21ddd25d574a29ade9da560db803a0907"; };
+      aarch64-linux = { name = "pcmflux-2.1.0-cp313-cp313-manylinux_2_28_aarch64.whl"; url = "https://files.pythonhosted.org/packages/f8/0d/a91740a0c2ea4ee8ea51e27dcf6a69d11e8cc0390dff6f50ec05268fe4d9/pcmflux-2.1.0-cp313-cp313-manylinux_2_28_aarch64.whl"; hash = "sha256:d2030962d07e1412671f0477667f68dbad91bbd0b131d65678e91b5ec0f42c0b"; };
     };
     "3.14" = {
-      x86_64-linux = { name = "pcmflux-2.0.0-cp314-cp314-manylinux_2_28_x86_64.whl";  url = "https://files.pythonhosted.org/packages/fd/69/99bb9d02fe925a0f38d9359e0761a9d38d831c293eba71654f3d29f13acf/pcmflux-2.0.0-cp314-cp314-manylinux_2_28_x86_64.whl";  hash = "sha256:050a8c7d7c099ee363279f085cab65e5f9891dc6ab9481a3edf64a901d276352"; };
-      aarch64-linux = { name = "pcmflux-2.0.0-cp314-cp314-manylinux_2_28_aarch64.whl"; url = "https://files.pythonhosted.org/packages/78/28/a4209023b9d3420814e3d79dc179ef11eddf89b15bc1a1b15eaeb473967f/pcmflux-2.0.0-cp314-cp314-manylinux_2_28_aarch64.whl"; hash = "sha256:d19c1f2c9773eb3e185f92e34ff331cfb5d2546d07494332f32e8aaa8f41f647"; };
+      x86_64-linux = { name = "pcmflux-2.1.0-cp314-cp314-manylinux_2_28_x86_64.whl";  url = "https://files.pythonhosted.org/packages/89/95/631255b607ae11f3425d2aace88e041d2d34199c087184483bdba9494095/pcmflux-2.1.0-cp314-cp314-manylinux_2_28_x86_64.whl";  hash = "sha256:eb1afe10e14d3d3888a40aa401acfc116bfa0080ab9b807f16db7f40f1424411"; };
+      aarch64-linux = { name = "pcmflux-2.1.0-cp314-cp314-manylinux_2_28_aarch64.whl"; url = "https://files.pythonhosted.org/packages/e2/48/3257067b3866e4e3910918c8f16dcc2d1fbb13ae7dab588e0840b48584f7/pcmflux-2.1.0-cp314-cp314-manylinux_2_28_aarch64.whl"; hash = "sha256:51b266a766da693f694d4b486876134f1989e5feb8947f091eb22893dc59461c"; };
     };
   };
   pyVer = lib.versions.majorMinor python.version;
@@ -17,7 +19,7 @@ let
 in
 buildPythonPackage {
   pname = "pcmflux";
-  version = "2.0.0";
+  version = "2.1.0";
   format = "wheel";
 
   src = fetchurl { inherit (wheel) name url hash; };

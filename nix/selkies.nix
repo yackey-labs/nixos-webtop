@@ -1,26 +1,15 @@
-# The Selkies backend (websockets mode). Same commit linuxserver pins.
+# The Selkies backend (websockets mode). Pinned to the upstream 2.0.0 release,
+# which brings the gaming mode (pointer + keyboard lock) the Mac Cmd-as-Super
+# case needs, and a rewritten capture setup where the jpeg-encoder
+# use_openh264 crash the previous pin had is gone (so the patch that fixed it
+# is gone too).
 { lib, python3, selkiesSrc, wayland, libglvnd, mesa, libgbm, libva, libdrm, libxkbcommon, pixman, xorg }:
 python3.pkgs.buildPythonApplication {
   pname = "selkies";
-  version = "1.6.2-unstable-2026";
+  version = "2.0.0";
   pyproject = true;
 
   src = selkiesSrc;
-
-  postPatch = ''
-    # Direct-URL dependency is not allowed in Nix builds; we supply the fork ourselves.
-    substituteInPlace pyproject.toml \
-      --replace-fail '"python-xlib @ https://github.com/selkies-project/python-xlib/archive/master.zip",' '"python-xlib",'
-  '';
-
-  # Pinned rev 348bc4f reads cs.use_openh264 unconditionally in
-  # _get_capture_settings but only assigns it when the encoder is not jpeg,
-  # so a jpeg client (e.g. ?encoder=jpeg, the documented iOS path) kills
-  # video capture with AttributeError and the session never leaves "waiting
-  # for stream". Upstream has since refactored past this code; until the pin
-  # moves, default the attribute here. See
-  # nix/patches/selkies-jpeg-use-openh264.patch.
-  patches = [ ./patches/selkies-jpeg-use-openh264.patch ];
 
   build-system = with python3.pkgs; [ setuptools wheel ];
 
@@ -29,6 +18,8 @@ python3.pkgs.buildPythonApplication {
     python-xlib pixelflux pcmflux xkbcommon distro pulsectl pasimple
     # WebRTC mode deps (kept so --mode=webrtc works too)
     aioice av cffi cryptography google-crc32c pyee pylibsrtp pyopenssl aiohttp aiofiles
+    # New in 2.0.0: microphone uplink, ICE/DNS, GPU stats, main loop.
+    pulsectl-asyncio dnspython uvloop pynvml
   ];
 
   pythonRelaxDeps = true;

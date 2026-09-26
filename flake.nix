@@ -68,8 +68,8 @@
           selkiesSrc = final.fetchFromGitHub {
             owner = "selkies-project";
             repo = "selkies";
-            rev = "348bc4f61da66198573e7e57db9a266aca1991d5";
-            hash = "sha256-buiWdWvweSIGG/N9QRBkxlBcXvPbFjNIC6zyZydpYuc=";
+            rev = "2.0.0";
+            hash = "sha256-6PgypByfQkH5RI+ZAkMANCF/R/KtAyno+tFNeIYRcyA=";
           };
 
           # Python interpreter whose package set carries Selkies' extras. Overriding
