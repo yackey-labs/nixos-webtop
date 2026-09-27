@@ -278,6 +278,15 @@
               # is 4-9x fewer pixels to encode. Desktop users can toggle it
               # back off in the sidebar's screen settings.
               "SELKIES_USE_CSS_SCALING=true"
+              # The pointer you see is pixelflux's (scoot --nested never sets
+              # a host cursor), delivered to the browser at the theme's
+              # nominal size whatever the output scale, and drawn there at
+              # the page's density. Left on auto (24) that is a 32 px sprite:
+              # 16 CSS px in HiDPI mode (density 2) but 32 under CSS scaling
+              # (density 1) -- a huge pointer on a phone until HiDPI was
+              # toggled. A base of 12 is scaled by Selkies with the DPI
+              # (12 at 96, 24 at 192), so both modes land on ~16 CSS px.
+              "SELKIES_CURSOR_SIZE=12"
             ];
             extraPackages = (with final; [
               ghostty
@@ -323,6 +332,8 @@
               # Same phone-decoder reasoning as the prod image: CSS scaling
               # keeps the coded stream inside iOS's Baseline-L3.0 budget.
               "SELKIES_USE_CSS_SCALING=true"
+              # Same pointer-size reasoning as the prod image.
+              "SELKIES_CURSOR_SIZE=12"
             ];
             extraPackages = (with final; [
               foot
