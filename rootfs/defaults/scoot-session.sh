@@ -44,12 +44,12 @@ supervise_scootbg() {
 supervise_scootbg &
 
 # Keep the wallpaper fitted to the output shape. The image is 1672x941
-# (~16:9) with the cat peeking in from the LEFT edge, so `fill`'s centred
+# (~16:9) with the cat peeking in from the RIGHT edge, so `fill`'s centred
 # crop is only safe on a screen at least that wide: there it trims top and
 # bottom, which is empty. Anything narrower -- a 4:3 or 16:10 browser
 # window, a portrait phone -- would crop the sides and cut the cat off, so
 # there it uses `fit` instead and pads top/bottom with the
-# image's own near-black (#0e0d0d) so the letterbox is invisible. The output
+# image's own near-black (#0d0d0d) so the letterbox is invisible. The output
 # follows the browser window for the life of the session, so this re-checks
 # on a timer rather than setting once. `scootbg set` returns only once the
 # image is on screen and fails while no daemon is up, so a failed set leaves
@@ -65,7 +65,7 @@ watch_wallpaper() {
       # Integer cross-multiply: W/H >= 1672/941 without floats.
       if [ $((W * 941)) -ge $((H * 1672)) ]; then want=fill; else want=fit; fi
       if [ "$want" != "$(cat "$MODE_FILE" 2>/dev/null)" ]; then
-        if scootbg set "$WALLPAPER" --mode "$want" --fill '#0e0d0d' >> "$LOG" 2>&1; then
+        if scootbg set "$WALLPAPER" --mode "$want" --fill '#0d0d0d' >> "$LOG" 2>&1; then
           log "wallpaper $want (${W}x${H})"; echo "$want" > "$MODE_FILE"
         fi
       fi
