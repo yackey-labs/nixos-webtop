@@ -27,6 +27,7 @@
       # recursive, so `scoot = scoot.packages...` would in fact resolve, but
       # only for a reader who checks that it is not a `rec`.
       scootFor = system: scoot.packages.${system}.default;
+      scootbgFor = system: scoot.packages.${system}.scootbg;
     in
     {
       overlays.default = final: prev: {
@@ -63,6 +64,9 @@
         selkiesPackages = lib.makeScope final.newScope (self: {
           inherit (final) noctalia-shell;
           scoot = scootFor final.stdenv.hostPlatform.system;
+          # scoot's own wallpaper daemon, from the same flake input, so it
+          # always matches the compositor it was built against.
+          scootbg = scootbgFor final.stdenv.hostPlatform.system;
 
           # Pinned upstream sources (same commit linuxserver builds from).
           selkiesSrc = final.fetchFromGitHub {
@@ -229,7 +233,7 @@
 
           # scoot (scrolling-tiling Wayland compositor, niri-shaped) with a
           # deliberately thin desktop: ashell (bar), fuzzel (launcher) and
-          # awww (wallpaper), nested the same way the niri image nests.
+          # scootbg (wallpaper), nested the same way the niri image nests.
           # scoot was written with this image's exact shape in mind: it
           # composites with pixman on the CPU, so it needs no GPU and no EGL,
           # and it exposes a control socket that can inject keys, click and
@@ -280,13 +284,12 @@
               foot
               fuzzel
               ashell
-              awww
               nautilus
               chromium
               self.chromiumWrapped
               self.wtypeViaScoot
               (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
-            ]) ++ [ self.scoot ] ++ self.themePackages;
+            ]) ++ [ self.scoot self.scootbg ] ++ self.themePackages;
           };
 
           # Scoot dev flavour: the same nested session minus everything under
@@ -458,7 +461,7 @@
         inherit (pkgs.selkiesPackages)
           selkies selkies-web selkies-addons pixelflux pcmflux nginx-selkies
           gst-wayland-display
-          scoot
+          scoot scootbg
           image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland
           image-webtop-hyprland-gst image-webtop-scoot image-scoot-dev;
         default = pkgs.selkiesPackages.image-webtop-i3;
