@@ -6,9 +6,9 @@
 # SCOOT_SOCKET.
 #
 # scootbg (scoot's own wallpaper daemon, from the scoot flake) draws the
-# wallpaper -- scoot's cat logo, vendored from the scoot repo's
-# docs/assets/logo.png into /defaults/scoot-cat.png -- on the background
-# layer. ashell draws the top bar -- launcher button, workspaces, window
+# wallpaper -- scoot's peeking ASCII cat, vendored from the scoot repo's
+# docs/assets/CatPeeking.png into /defaults/scoot-cat-peeking.png -- on the
+# background layer. ashell draws the top bar -- launcher button, workspaces, window
 # title, tray, clock, settings -- on the Top layer. fuzzel needs no daemon:
 # keybinds and the bar's launcher button spawn it fresh on every use.
 #
@@ -24,7 +24,7 @@ LOG="${XDG_RUNTIME_DIR:-/tmp}/scoot-session.log"
 
 log() { echo "[scoot-session] $* $(date -Is)" >> "$LOG"; }
 
-WALLPAPER="${WALLPAPER:-/defaults/scoot-cat.png}"
+WALLPAPER="${WALLPAPER:-/defaults/scoot-cat-peeking.png}"
 
 # scootbg does not restore its wallpaper across a daemon restart yet
 # (docs/scootbg/backlog/restore-state.md upstream), so every (re)start drops
@@ -43,10 +43,11 @@ supervise_scootbg() {
 
 supervise_scootbg &
 
-# Keep the wallpaper fitted to the output shape. The logo is 3:2 landscape:
-# `fill` covers a landscape screen edge to edge, but on a portrait phone it
-# would slice the cat in half, so there it uses `fit` instead and pads
-# top/bottom with black to match scoot's flat clear color. The output
+# Keep the wallpaper fitted to the output shape. The image is ~16:9 with the
+# cat peeking in from the LEFT edge: `fill` covers a landscape screen edge
+# to edge, but its centred crop on a portrait phone would cut the cat off
+# entirely, so there it uses `fit` instead and pads top/bottom with the
+# image's own near-black (#0e0d0d) so the letterbox is invisible. The output
 # follows the browser window for the life of the session, so this re-checks
 # on a timer rather than setting once. `scootbg set` returns only once the
 # image is on screen and fails while no daemon is up, so a failed set leaves
@@ -61,7 +62,7 @@ watch_wallpaper() {
     if [ -n "$W" ] && [ -n "$H" ]; then
       if [ "$H" -gt "$W" ]; then want=fit; else want=fill; fi
       if [ "$want" != "$(cat "$MODE_FILE" 2>/dev/null)" ]; then
-        if scootbg set "$WALLPAPER" --mode "$want" --fill '#000000' >> "$LOG" 2>&1; then
+        if scootbg set "$WALLPAPER" --mode "$want" --fill '#0e0d0d' >> "$LOG" 2>&1; then
           log "wallpaper $want (${W}x${H})"; echo "$want" > "$MODE_FILE"
         fi
       fi
