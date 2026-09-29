@@ -1,9 +1,8 @@
 #!/bin/bash
 # Dev flavour of startwm-scoot.sh: identical nesting, but the session is
 # scoot-session-dev.sh (foot only -- no bar, no wallpaper) instead of the
-# ashell + scootbg session. The bar is what this image exists to replace
-# (scootbar), and scootbg is left out so a local scoot checkout's scootbg
-# can be run by hand without a second daemon holding the socket.
+# scootbar + scootbg session. Both are left out so a local scoot checkout's
+# scootbar/scootbg can be run by hand without a second daemon on the display.
 ulimit -c 0
 export XKB_DEFAULT_LAYOUT="${XKB_DEFAULT_LAYOUT:-us}"
 export XDG_CURRENT_DESKTOP=scoot
