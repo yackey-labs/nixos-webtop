@@ -8,14 +8,15 @@
 # scootbg (scoot's own wallpaper daemon, from the scoot flake) draws the
 # wallpaper -- scoot's peeking ASCII cat, vendored from the scoot repo's
 # docs/assets/CatPeeking.png into /defaults/scoot-cat-peeking.png -- on the
-# background layer. ashell draws the top bar -- launcher button, workspaces, window
-# title, tray, clock, settings -- on the Top layer. fuzzel needs no daemon:
-# keybinds and the bar's launcher button spawn it fresh on every use.
+# background layer. scootbar (scoot's own status bar, same flake) draws the
+# top bar -- clickable workspace numbers on the left, the clock in the middle
+# -- on the Top layer. It has no launcher button (nor tray or window title)
+# yet; fuzzel needs no daemon, and keybinds spawn it fresh on every use.
 #
 # scootbg takes no exclusive zone (background layer, empty input region), so
-# it never shrinks the tiled area. ashell on the Top layer reserves its
-# height, which is the "shell is up" signal: the moment it maps, `scoot msg
-# outputs` reports usable below rect.
+# it never shrinks the tiled area. scootbar on the Top layer reserves its
+# height (plus margin), which is the "shell is up" signal: the moment it
+# maps, `scoot msg outputs` reports usable below rect.
 #
 # Not scoot's [wallpaper] config section: that is planned upstream but not
 # accepted yet, and scoot ignores the WHOLE config file on an unknown
@@ -76,9 +77,16 @@ watch_wallpaper() {
 
 watch_wallpaper &
 
+# scootbar has no config file yet, so it is all flags. --margin 8 matches
+# scoot's [layout] gap, so the bar floats one gap from the edges and windows
+# sit one gap below it. Its default colors are already Catppuccin Mocha.
+# SCOOTBAR_FONT is set by the image (a store path: there is no fontconfig).
+# It exits when the compositor goes away and never reconnects, so the loop
+# brings it back after a crash.
 while true; do
-  log "starting ashell"
-  ashell >> "$LOG" 2>&1
-  log "ashell exited ($?); relaunching in 3s"
+  log "starting scootbar"
+  scootbar daemon --font "$SCOOTBAR_FONT" --font-size 13 --margin 8 \
+    --left workspaces --center clock >> "$LOG" 2>&1
+  log "scootbar exited ($?); relaunching in 3s"
   sleep 3
 done

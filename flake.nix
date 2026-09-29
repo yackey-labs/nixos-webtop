@@ -28,6 +28,7 @@
       # only for a reader who checks that it is not a `rec`.
       scootFor = system: scoot.packages.${system}.default;
       scootbgFor = system: scoot.packages.${system}.scootbg;
+      scootbarFor = system: scoot.packages.${system}.scootbar;
     in
     {
       overlays.default = final: prev: {
@@ -67,6 +68,8 @@
           # scoot's own wallpaper daemon, from the same flake input, so it
           # always matches the compositor it was built against.
           scootbg = scootbgFor final.stdenv.hostPlatform.system;
+          # ...and its status bar, likewise.
+          scootbar = scootbarFor final.stdenv.hostPlatform.system;
 
           # Pinned upstream sources (same commit linuxserver builds from).
           selkiesSrc = final.fetchFromGitHub {
@@ -110,9 +113,9 @@
           # Hyprland images cannot drift apart visually.
           themePackages = with final; [
             nerd-fonts.jetbrains-mono
-            # ashell draws ALL of its icons (including the launcher button)
-            # from "Symbols Nerd Font" by family name; without this package
-            # fc-match falls back to DejaVu and every glyph comes out blank.
+            # Anything that asks fontconfig for "Symbols Nerd Font" by family
+            # name gets DejaVu without this package, and every icon glyph
+            # comes out blank.
             nerd-fonts.symbols-only
             papirus-icon-theme
             # The bare `catppuccin-cursors` attribute is an aggregate and ships
@@ -232,7 +235,7 @@
           };
 
           # scoot (scrolling-tiling Wayland compositor, niri-shaped) with a
-          # deliberately thin desktop: ashell (bar), fuzzel (launcher) and
+          # deliberately thin desktop: scootbar (bar), fuzzel (launcher) and
           # scootbg (wallpaper), nested the same way the niri image nests.
           # scoot was written with this image's exact shape in mind: it
           # composites with pixman on the CPU, so it needs no GPU and no EGL,
@@ -260,7 +263,6 @@
             startwm = ./rootfs/defaults/startwm-scoot.sh;
             configTemplates = {
               scoot = ./rootfs/config/scoot;
-              ashell = ./rootfs/config/ashell;
               ghostty = ./rootfs/config/ghostty;
               foot = ./rootfs/config/foot;
               fuzzel = ./rootfs/config/fuzzel;
@@ -287,18 +289,20 @@
               # toggled. A base of 12 is scaled by Selkies with the DPI
               # (12 at 96, 24 at 192), so both modes land on ~16 CSS px.
               "SELKIES_CURSOR_SIZE=12"
+              # scootbar takes a font FILE, not a family name (no
+              # fontconfig), and none of its well-known paths exist here.
+              "SCOOTBAR_FONT=${final.nerd-fonts.jetbrains-mono}/share/fonts/truetype/NerdFonts/JetBrainsMono/JetBrainsMonoNerdFont-Regular.ttf"
             ];
             extraPackages = (with final; [
               ghostty
               foot
               fuzzel
-              ashell
               nautilus
               chromium
               self.chromiumWrapped
               self.wtypeViaScoot
               (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
-            ]) ++ [ self.scoot self.scootbg ] ++ self.themePackages;
+            ]) ++ [ self.scoot self.scootbg self.scootbar ] ++ self.themePackages;
           };
 
           # Scoot dev flavour: the same nested session minus everything under
@@ -472,7 +476,7 @@
         inherit (pkgs.selkiesPackages)
           selkies selkies-web selkies-addons pixelflux pcmflux nginx-selkies
           gst-wayland-display
-          scoot scootbg
+          scoot scootbg scootbar
           image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland
           image-webtop-hyprland-gst image-webtop-scoot image-scoot-dev;
         default = pkgs.selkiesPackages.image-webtop-i3;

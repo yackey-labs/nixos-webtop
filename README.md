@@ -30,7 +30,7 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-webtop-i3`  | `image-base` + i3, i3status, dmenu, xfce4-terminal, Chromium | `webtop:arch-i3`             |
 | `image-webtop-niri`| Wayland mode: niri + noctalia-shell, foot, Chromium (Wayland), nautilus, xwayland-satellite | no direct equivalent (closest: `webtop:arch-i3` with `PIXELFLUX_WAYLAND=true`/sway) |
 | `image-webtop-hyprland`| Wayland mode: Hyprland + waybar, fuzzel, mako, swaybg, foot, Chromium | no equivalent |
-| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + ashell bar, fuzzel, scootbg wallpaper (scoot's peeking cat), ghostty, foot, nautilus, Chromium (Wayland) | no equivalent |
+| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper (scoot's peeking cat), ghostty, foot, nautilus, Chromium (Wayland) | no equivalent |
 | `image-scoot-dev`| Scoot dev session: Selkies + scoot + foot + fuzzel only (no browser, file manager, bar or wallpaper). Local scoot/scootbar/scootbg checkouts slot in via `--override-input` | no equivalent |
 
 Both are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
@@ -152,19 +152,17 @@ as its target. Two things make it a better fit here than niri or Hyprland:
   `scoot msg screenshot --out /tmp/shot.png`. An agent driving the desktop is a
   first-class client rather than something bolted on with `xdotool`.
 
-The desktop on top is deliberately thin: [ashell](https://github.com/MalpenZibo/ashell)
-for the top bar (launcher button, workspaces, window title, tray, clock,
-settings), [fuzzel](https://codeberg.org/dnkl/fuzzel) as the launcher,
+The desktop on top is deliberately thin: [scootbar](https://github.com/scoot-sh/scoot/tree/main/docs/scootbar)
+(scoot's own status bar, from the same flake input) for the top bar
+(clickable workspace numbers and a clock), [fuzzel](https://codeberg.org/dnkl/fuzzel) as the launcher,
 spawned fresh on every use, and [scootbg](https://github.com/scoot-sh/scoot/tree/main/docs/scootbg)
 (scoot's own wallpaper daemon, from the same flake input) for the wallpaper -- scoot's peeking ASCII cat (`docs/assets/CatPeeking.png`),
-vendored from the scoot repo into `/defaults/scoot-cat-peeking.png`. ashell has no dedicated scoot integration, so it
-uses its generic Wayland backend: workspaces via `ext-workspace-v1` and the
-active window via `wlr-foreign-toplevel-management`, both of which scoot
-implements. Everything is started from `/defaults/scoot-session.sh`, which
+vendored from the scoot repo into `/defaults/scoot-cat-peeking.png`. scootbar
+reads workspaces over `ext-workspace-v1`. Everything is started from `/defaults/scoot-session.sh`, which
 scoot runs as its `--` command, because scoot's config has no
 `spawn-at-startup` (and scoot's planned `[wallpaper]` section is not
 accepted yet). scootbg draws on the background layer without reserving
-space; ashell reserves its bar height, so `scoot msg outputs` reporting
+space; scootbar reserves its bar height, so `scoot msg outputs` reporting
 `usable` below `rect` remains the "shell is up" signal.
 
 There is intentionally no desktop shell and no screen locker in this image:
@@ -178,13 +176,12 @@ a browser tab rarely sees it, so the Alt column is what works without touching
 the Selkies sidebar's keyboard-lock toggle. `Alt+h/j/k/l` move around,
 `Alt+Shift+h/j/k/l` move windows, `Alt+q` closes, `Alt+r` cycles column width,
 `Alt+Return`/`Alt+t` ghostty, `Alt+d` the fuzzel launcher, `Alt+b` Chromium,
-`Alt+e` nautilus. The bar's leftmost button is the same launcher: plain
-layer-shell left-click straight into fuzzel. Quitting the session stays on
+`Alt+e` nautilus. Quitting the session stays on
 `Super+Shift+e` alone. The seeded
 config is `rootfs/config/scoot/config.toml`, copied to `/config/.config/scoot/` on
 first run only; inside a terminal prefer the Super bindings, since `Alt+b`/`Alt+d`
-are readline's backward-word and kill-word. ashell's own config is
-`rootfs/config/ashell/config.toml`, hot-reloaded live by ashell itself.
+are readline's backward-word and kill-word. scootbar has no config file
+yet; its flags live in `/defaults/scoot-session.sh`.
 
 Because scoot has no XWayland, this is the only image that carries **no X11
 userland at all** — `mkSelkiesImage { x11 = false; }` drops Xvfb, openbox, st,
