@@ -24,6 +24,14 @@ chown abc:abc /config
 if [ "${SKIP_CHOWN_CONFIG:-false}" != "true" ]; then
   chown -R abc:abc /config 2>/dev/null || true
 fi
+# abc-owned homes for XDG state: some services run as root and create
+# /config/.local/state as root on their first start, which would leave abc's
+# own state writers (scootbg's per-profile wallpaper restore, ...) unable to
+# create their directories underneath it. Pre-create them here, while this
+# script is still root and before s6-svscan starts the services; a root
+# service can still write into an abc-owned parent, but not vice versa.
+mkdir -p /config/.local/bin /config/.local/share /config/.local/state
+chown -R abc:abc /config/.local
 
 export XDG_RUNTIME_DIR="/run/user/${PUID}"
 mkdir -p "$XDG_RUNTIME_DIR"
