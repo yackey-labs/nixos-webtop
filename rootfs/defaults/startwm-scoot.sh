@@ -58,6 +58,13 @@ SRC="/defaults/scoot-looks/$LOOK"
 # silently keeping the old look. `--remove-destination` unlinks first and
 # `chmod u+w` after guarantees writability either way.
 seed() { # src dest; returns nonzero on failure
+  # N3: never back up when the copy would fail. A broken /defaults (missing
+  # or unreadable source) must not mint one .bak-<ns> per boot while the
+  # marker correctly stays put.
+  if [ ! -r "$1" ]; then
+    echo "[startwm-scoot] ERROR: seed source '$1' missing or unreadable; not backing up '$2'" >&2
+    return 1
+  fi
   mkdir -p "$(dirname "$2")" || return 1
   # sha256sum, not cmp: diffutils is not in this image, so cmp is missing
   # (it would fail every comparison and back up even identical files).
@@ -88,16 +95,43 @@ if [ ! -f "$MARKER" ] || [ "$(cat "$MARKER" 2>/dev/null)" != "$LOOK" ]; then
   seed "$SRC/foot.ini" "$HOME/.config/foot/foot.ini" || seed_ok=0
   [ -f "$SRC/starship.toml" ] && { seed "$SRC/starship.toml" "$HOME/.config/starship.toml" || seed_ok=0; }
   if [ -d "$SRC/helix" ]; then
+    # Every file under /defaults is a nix-store symlink, so bare
+    # `find -type f` matches nothing; enumerate symlinks too (as
+    # rootfs/init does). Count what the look ships and fail loudly if the
+    # count comes up short, so a silently empty subdirectory seed can never
+    # flip the marker again.
+    helix_expected=$(cd "$SRC/helix" && find . \( -type f -o -type l \) | grep -c .)
+    helix_seeded=0
     while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
       rel="${rel#./}"
-      seed "$SRC/helix/$rel" "$HOME/.config/helix/$rel" || seed_ok=0
-    done < <(cd "$SRC/helix" && find . -type f)
+      if seed "$SRC/helix/$rel" "$HOME/.config/helix/$rel"; then
+        helix_seeded=$((helix_seeded+1))
+      else
+        seed_ok=0
+      fi
+    done < <(cd "$SRC/helix" && find . \( -type f -o -type l \))
+    if [ "$helix_seeded" -lt "$helix_expected" ]; then
+      echo "[startwm-scoot] ERROR: seeded $helix_seeded/$helix_expected helix files for look '$LOOK'" >&2
+      seed_ok=0
+    fi
   fi
   if [ -d "$SRC/btop" ]; then
+    btop_expected=$(cd "$SRC/btop" && find . \( -type f -o -type l \) | grep -c .)
+    btop_seeded=0
     while IFS= read -r rel; do
+      [ -n "$rel" ] || continue
       rel="${rel#./}"
-      seed "$SRC/btop/$rel" "$HOME/.config/btop/$rel" || seed_ok=0
-    done < <(cd "$SRC/btop" && find . -type f)
+      if seed "$SRC/btop/$rel" "$HOME/.config/btop/$rel"; then
+        btop_seeded=$((btop_seeded+1))
+      else
+        seed_ok=0
+      fi
+    done < <(cd "$SRC/btop" && find . \( -type f -o -type l \))
+    if [ "$btop_seeded" -lt "$btop_expected" ]; then
+      echo "[startwm-scoot] ERROR: seeded $btop_seeded/$btop_expected btop files for look '$LOOK'" >&2
+      seed_ok=0
+    fi
   fi
   [ -f "$SRC/lazygit.yml" ] && { seed "$SRC/lazygit.yml" "$HOME/.config/lazygit/config.yml" || seed_ok=0; }
   # The bar's command modules (bar.toml's [exec.load]/[exec.cpu] run these by
