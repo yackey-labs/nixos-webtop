@@ -59,7 +59,11 @@ SRC="/defaults/scoot-looks/$LOOK"
 # `chmod u+w` after guarantees writability either way.
 seed() { # src dest; returns nonzero on failure
   mkdir -p "$(dirname "$2")" || return 1
-  if [ -f "$2" ] && ! cmp -s "$1" "$2"; then
+  # sha256sum, not cmp: diffutils is not in this image, so cmp is missing
+  # (it would fail every comparison and back up even identical files).
+  # The cut keeps the hash only: sha256sum prints "<hash>  <path>", and the
+  # paths always differ.
+  if [ -f "$2" ] && [ "$(sha256sum "$1" 2>/dev/null | cut -d' ' -f1)" != "$(sha256sum "$2" 2>/dev/null | cut -d' ' -f1)" ]; then
     # Nanosecond timestamp plus a collision loop: two switches inside one
     # second (or one nanosecond, or a date without %N) must not overwrite
     # the first backup.
