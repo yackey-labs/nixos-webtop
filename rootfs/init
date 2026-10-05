@@ -41,15 +41,38 @@ chown abc:abc "$XDG_RUNTIME_DIR"
 [ -s /etc/machine-id ] || dbus-uuidgen > /etc/machine-id
 
 # ---- default per-user config (first run) ---------------------------------
+# Copy $1 onto $2 so the destination ends up user-writable even when either
+# side is a read-only nix-store file (mode 444): plain `cp` opens an existing
+# 444 destination in place and fails with Permission denied, so a later image
+# update would never replace a seeded 444 copy. Unlink-first plus chmod fixes
+# both halves.
+install_default() { # src dst
+  cp -L --remove-destination "$1" "$2" || return 1
+  chmod u+w "$2" || return 1
+}
+
+# Nanosecond backup name with a collision loop (see startwm-scoot.sh): two
+# updates inside one second must not overwrite the first backup.
+backup_name() { # dst; prints a free <dst>.bak-<ts> path
+  local ts suffix i
+  ts=$(date +%s%N)
+  suffix="$ts"
+  i=0
+  while [ -e "$1.bak-$suffix" ]; do
+    i=$((i+1))
+    suffix="${ts}-$i"
+  done
+  printf '%s.bak-%s' "$1" "$suffix"
+}
 CONF_DIR="$HOME/.config/openbox"
 mkdir -p "$HOME/.config"
 if [ ! -f "$CONF_DIR/autostart" ]; then
   mkdir -p "$CONF_DIR"
-  cp /defaults/autostart "$CONF_DIR/autostart"
+  install_default /defaults/autostart "$CONF_DIR/autostart"
 fi
 if [ ! -f "$CONF_DIR/menu.xml" ]; then
   mkdir -p "$CONF_DIR"
-  cp /defaults/menu.xml "$CONF_DIR/menu.xml"
+  install_default /defaults/menu.xml "$CONF_DIR/menu.xml"
 fi
 # Per-app config templates baked into the image (/defaults/config/<app> -> ~/.config/<app>).
 #
@@ -91,26 +114,26 @@ for tpl in /defaults/config/*/; do
     printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
 
     if [ ! -f "$dst" ]; then
-      mkdir -p "$(dirname "$dst")"; cp -L "$src" "$dst"; continue
+      mkdir -p "$(dirname "$dst")"; install_default "$src" "$dst"; continue
     fi
 
     cur_sum=$(sha256sum "$dst" 2>/dev/null | cut -d' ' -f1)
     [ "$cur_sum" = "$new_sum" ] && continue
 
     if [ "$had_manifest" -eq 0 ]; then
-      ts=$(date +%Y%m%d%H%M%S)
-      echo "[init] $app/$rel differs from the image default and predates config tracking; keeping yours as $rel.bak-$ts"
-      cp -L "$dst" "$dst.bak-$ts"
-      cp -L "$src" "$dst"
+      bak=$(backup_name "$dst")
+      echo "[init] $app/$rel differs from the image default and predates config tracking; keeping yours as $(basename "$bak")"
+      cp -L "$dst" "$bak"
+      install_default "$src" "$dst"
       continue
     fi
 
     old_sum=$(awk -v r="$rel" '$2==r {print $1}' "$manifest" 2>/dev/null | head -1)
     if [ "$cur_sum" = "$old_sum" ]; then
-      cp -L "$src" "$dst"                       # untouched since we shipped it
+      install_default "$src" "$dst"               # untouched since we shipped it
     else
       echo "[init] $app/$rel was edited locally; image default written to $rel.new"
-      cp -L "$src" "$dst.new"
+      install_default "$src" "$dst.new"
     fi
   done
 
@@ -120,7 +143,7 @@ done
 # i3 would otherwise pop its first-run config wizard; seed the stock config instead.
 if command -v i3 >/dev/null 2>&1 && [ ! -f "$HOME/.config/i3/config" ] && [ -f /usr/etc/i3/config ]; then
   mkdir -p "$HOME/.config/i3"
-  cp /usr/etc/i3/config "$HOME/.config/i3/config"
+  install_default /usr/etc/i3/config "$HOME/.config/i3/config"
 fi
 chown -R abc:abc "$HOME/.config"
 

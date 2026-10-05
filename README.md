@@ -30,7 +30,7 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-webtop-i3`  | `image-base` + i3, i3status, dmenu, xfce4-terminal, Chromium | `webtop:arch-i3`             |
 | `image-webtop-niri`| Wayland mode: niri + noctalia-shell, foot, Chromium (Wayland), nautilus, xwayland-satellite | no direct equivalent (closest: `webtop:arch-i3` with `PIXELFLUX_WAYLAND=true`/sway) |
 | `image-webtop-hyprland`| Wayland mode: Hyprland + waybar, fuzzel, mako, swaybg, foot, Chromium | no equivalent |
-| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper, ghostty, foot, starship, Helix, btop, lazygit, nautilus, Chromium (Wayland). Three runtime looks (`SCOOT_LOOK`: `radial-burst` default, `music-desk`, `vinyl-sunset`) | no equivalent |
+| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper, ghostty, foot, starship, Helix, btop, lazygit, nautilus, Chromium (Wayland). Four runtime looks (`SCOOT_LOOK`: `radial-burst` default, `music-desk`, `vinyl-sunset`, `moonrise`) | no equivalent |
 | `image-scoot-dev`| Scoot dev session: Selkies + scoot + foot + fuzzel only (no browser, file manager, bar or wallpaper). Local scoot/scootbar/scootbg checkouts slot in via `--override-input` | no equivalent |
 
 Both are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
@@ -171,7 +171,7 @@ height, so `scoot msg outputs` reporting `usable` below `rect` remains the
 
 ### Looks
 
-One image carries all three of scoot's example looks, adapted for a
+One image carries all four of scoot's example looks, adapted for a
 browser-hosted nested session (Alt+Super doubled binds, cursor theme,
 no-CSD, full-width-first columns). Pick at run time:
 
@@ -184,12 +184,15 @@ docker run -e SCOOT_LOOK=music-desk ... selkies-nix-webtop-scoot:latest
 | `radial-burst` (default) | Dark, high-contrast plum with a blue/orange ring and a floating translucent bar. The default because dark pixels encode cheapest over Selkies and stay readable on a phone screen. | radial-burst.png (Unsplash, redistributable) |
 | `music-desk` | Light paper-white desk with a blue ring and an edge-to-edge bar. Costs more encoded pixels full-screen and washes out faster on phones. | music-desk.png (Unsplash, redistributable) |
 | `vinyl-sunset` | Dark espresso with a sunset-orange ring. Ships a solid espresso color, NOT the illustration: its Pixabay license forbids passing it on standalone, and a published image is redistribution. | solid `#271A1F` (download the illustration yourself for your own config) |
+| `moonrise` | Calm dark night sky: slate navy through mauve to dusty rose under a huge amber disc, with an amber ring. Dark pixels encode cheaply over Selkies, like the default. | moonrise.png (Unsplash, redistributable) |
 
 ![radial-burst look in the webtop](docs-screenshot-scoot-radial-burst.png)
 
 ![music-desk look in the webtop](docs-screenshot-scoot-music-desk.png)
 
 ![vinyl-sunset look in the webtop](docs-screenshot-scoot-vinyl-sunset.png)
+
+![moonrise look in the webtop](docs-screenshot-scoot-moonrise.png)
 
 Each look themes the whole session: compositor colors and gaps, bar layout
 and modules (including the bar's `load`/`cpu` command modules), foot palette
@@ -201,7 +204,7 @@ it themes). `startwm-scoot.sh` seeds the picked look into `/config/.config`
 use and whenever `SCOOT_LOOK` changes; a file you edited is kept as
 `<file>.bak-<timestamp>`, never silently overwritten. Edits you make after
 that survive until the look changes. The wallpapers' redistribution terms
-live in `rootfs/defaults/scoot-looks/NOTICE.scoot-looks`; the two Unsplash
+live in `rootfs/defaults/scoot-looks/NOTICE.scoot-looks`; the three Unsplash
 images stay under the Unsplash License in every pulled copy of this image.
 
 There is intentionally no desktop shell, no screen locker and no greeter in

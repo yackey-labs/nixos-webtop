@@ -21,6 +21,13 @@ repository's GPL-3.0 license; each image stays under its own license.
   Same Unsplash License terms as above. Source: scoot's
   docs/assets/wallpapers/music-desk.png (scoot-sh/scoot, same rev).
 
+- `moonrise/wallpaper.png` is "Silhouetted trees under moon and stars" by
+  saatvik 5554 (@saatvik_reddy_suravaram), published on Unsplash
+  (https://unsplash.com/illustrations/silhouetted-trees-under-moon-and-stars-jwBJOj6gakI).
+  Same Unsplash License terms as above. Source: scoot's
+  docs/assets/wallpapers/moonrise.png (scoot-sh/scoot, checked against
+  scoot main 7cbb2f76, 2026-10-05).
+
 - `vinyl-sunset/` ships NO wallpaper image, deliberately. Its illustration
   ("Lofi, vintage, vinyl, study, audio" by AninditaErina, marked AI-generated:
   https://pixabay.com/illustrations/lofi-vintage-vinyl-study-audio-8390965/)
@@ -33,6 +40,6 @@ repository's GPL-3.0 license; each image stays under its own license.
   or Chillhop image is used anywhere in this image.
 
 The `.toml`, `.ini`, `.yml`, `.css`, `.sh` and `.theme` look files are adapted
-from scoot's docs/examples/vinyl-sunset, docs/examples/music-desk and
-docs/examples/radial-burst (scoot-sh/scoot, MIT); each file's header says what
-this image changed and why.
+from scoot's docs/examples/moonrise, docs/examples/vinyl-sunset,
+docs/examples/music-desk and docs/examples/radial-burst (scoot-sh/scoot, MIT);
+each file's header says what this image changed and why.

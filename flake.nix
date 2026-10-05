@@ -254,7 +254,7 @@
           # application in this list is Wayland-native.
           #
           # The look (scoot + bar + foot + starship + Helix + btop + lazygit
-          # themes, one of radial-burst, music-desk, vinyl-sunset) is picked
+          # themes, one of radial-burst, music-desk, vinyl-sunset, moonrise) is picked
           # at run time with SCOOT_LOOK (default radial-burst); see
           # rootfs/defaults/startwm-scoot.sh and NOTICE.scoot-looks.
           image-webtop-scoot = self.mkSelkiesImage {
@@ -273,7 +273,7 @@
               # look's scoot.toml / bar.toml / foot.ini (plus starship, Helix,
               # btop, lazygit and the bar's load.sh/cpu.sh helpers) into
               # ~/.config on first use and whenever SCOOT_LOOK changes, so
-              # one image carries all three looks.
+              # one image carries all four looks.
               ghostty = ./rootfs/config/ghostty;
               fuzzel = ./rootfs/config/fuzzel;
             };

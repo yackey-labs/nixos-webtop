@@ -34,12 +34,12 @@ export ELECTRON_OZONE_PLATFORM_HINT=wayland
 # radial-burst is the default: dark and high-contrast, which survives
 # x264 + CSS scaling to a phone screen best; music-desk's paper white costs
 # more encoded pixels and washes out faster, and vinyl-sunset ships without
-# its illustration for licensing reasons. One image, not three: the looks
-# are kilobytes of config plus two small PNGs, so splitting would triple the
-# registry entries for no measured gain.
+# its illustration for licensing reasons. One image, not four: the looks
+# are kilobytes of config plus three small PNGs, so splitting would quadruple
+# the registry entries for no measured gain.
 LOOK="${SCOOT_LOOK:-radial-burst}"
 case "$LOOK" in
-  radial-burst|music-desk|vinyl-sunset) ;;
+  radial-burst|music-desk|vinyl-sunset|moonrise) ;;
   *) echo "[startwm-scoot] unknown SCOOT_LOOK='$LOOK', falling back to radial-burst" >&2
      LOOK=radial-burst ;;
 esac
@@ -50,40 +50,62 @@ SRC="/defaults/scoot-looks/$LOOK"
 # changes. A file the user edited is kept as <file>.bak-<timestamp>, never
 # silently overwritten; switching back and forth between looks re-seeds each
 # time (with a backup when the file differs), so a look switch never merges.
-seed() { # src dest
-  mkdir -p "$(dirname "$2")"
+#
+# Seeded files are user-writable: the /defaults originals are nix-store
+# read-only (mode 444), so a plain `cp` would seed a 444 copy that a later
+# look switch cannot overwrite in place (GNU cp opens the existing inode) --
+# the switch would fail with Permission denied while the marker still flipped,
+# silently keeping the old look. `--remove-destination` unlinks first and
+# `chmod u+w` after guarantees writability either way.
+seed() { # src dest; returns nonzero on failure
+  mkdir -p "$(dirname "$2")" || return 1
   if [ -f "$2" ] && ! cmp -s "$1" "$2"; then
-    cp "$2" "$2.bak-$(date +%s)"
+    # Nanosecond timestamp plus a collision loop: two switches inside one
+    # second (or one nanosecond, or a date without %N) must not overwrite
+    # the first backup.
+    ts=$(date +%s%N)
+    suffix="$ts"
+    i=0
+    while [ -e "$2.bak-$suffix" ]; do
+      i=$((i+1))
+      suffix="${ts}-$i"
+    done
+    cp -p "$2" "$2.bak-$suffix" || return 1
   fi
-  cp "$1" "$2"
+  cp --remove-destination "$1" "$2" || return 1
+  chmod u+w "$2" || return 1
 }
 MARKER="$HOME/.config/.scoot-look"
 if [ ! -f "$MARKER" ] || [ "$(cat "$MARKER" 2>/dev/null)" != "$LOOK" ]; then
   echo "[startwm-scoot] seeding look '$LOOK' into $HOME/.config" >&2
-  seed "$SRC/scoot.toml" "$HOME/.config/scoot/config.toml"
-  seed "$SRC/bar.toml" "$HOME/.config/scoot/bar.toml"
-  seed "$SRC/foot.ini" "$HOME/.config/foot/foot.ini"
-  [ -f "$SRC/starship.toml" ] && seed "$SRC/starship.toml" "$HOME/.config/starship.toml"
+  seed_ok=1
+  seed "$SRC/scoot.toml" "$HOME/.config/scoot/config.toml" || seed_ok=0
+  seed "$SRC/bar.toml" "$HOME/.config/scoot/bar.toml" || seed_ok=0
+  seed "$SRC/foot.ini" "$HOME/.config/foot/foot.ini" || seed_ok=0
+  [ -f "$SRC/starship.toml" ] && { seed "$SRC/starship.toml" "$HOME/.config/starship.toml" || seed_ok=0; }
   if [ -d "$SRC/helix" ]; then
-    (cd "$SRC/helix" && find . -type f) | while IFS= read -r rel; do
+    while IFS= read -r rel; do
       rel="${rel#./}"
-      seed "$SRC/helix/$rel" "$HOME/.config/helix/$rel"
-    done
+      seed "$SRC/helix/$rel" "$HOME/.config/helix/$rel" || seed_ok=0
+    done < <(cd "$SRC/helix" && find . -type f)
   fi
   if [ -d "$SRC/btop" ]; then
-    (cd "$SRC/btop" && find . -type f) | while IFS= read -r rel; do
+    while IFS= read -r rel; do
       rel="${rel#./}"
-      seed "$SRC/btop/$rel" "$HOME/.config/btop/$rel"
-    done
+      seed "$SRC/btop/$rel" "$HOME/.config/btop/$rel" || seed_ok=0
+    done < <(cd "$SRC/btop" && find . -type f)
   fi
-  [ -f "$SRC/lazygit.yml" ] && seed "$SRC/lazygit.yml" "$HOME/.config/lazygit/config.yml"
+  [ -f "$SRC/lazygit.yml" ] && { seed "$SRC/lazygit.yml" "$HOME/.config/lazygit/config.yml" || seed_ok=0; }
   # The bar's command modules (bar.toml's [exec.load]/[exec.cpu] run these by
   # bare name). They live beside the configs that reference them, not in
   # ~/.local/bin: Selkies (running as root) owns ~/.local/state, so ~/.local
   # itself is root-owned and this user cannot create ~/.local/bin there.
   for helper in load.sh cpu.sh; do
-    seed "/defaults/scoot-bin/$helper" "$HOME/.config/scoot/bin/$helper"
-    chmod +x "$HOME/.config/scoot/bin/$helper"
+    if seed "/defaults/scoot-bin/$helper" "$HOME/.config/scoot/bin/$helper"; then
+      chmod +x "$HOME/.config/scoot/bin/$helper" || seed_ok=0
+    else
+      seed_ok=0
+    fi
   done
   # The prompt: starship reads ~/.config/starship.toml by default, so this
   # only wires the init line in once. Looks without a starship.toml (radial
@@ -95,7 +117,14 @@ if [ ! -f "$MARKER" ] || [ "$(cat "$MARKER" 2>/dev/null)" != "$LOOK" ]; then
       printf 'command -v starship >/dev/null && eval "$(starship init bash)"\n' >> "$HOME/.bashrc"
     fi
   fi
-  echo "$LOOK" > "$MARKER"
+  # The marker flips only when every file landed: a failed switch keeps
+  # the old marker, so the next start retries the seed instead of running
+  # the new look's session on the old look's files.
+  if [ "$seed_ok" -eq 1 ]; then
+    echo "$LOOK" > "$MARKER"
+  else
+    echo "[startwm-scoot] ERROR: seeding look '$LOOK' failed; keeping old marker" >&2
+  fi
 fi
 
 # Every start, not just seeding ones: a restarted container keeps its seeded
