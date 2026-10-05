@@ -1,5 +1,21 @@
 {
   "nodes": {
+    "crane": {
+      "locked": {
+        "lastModified": 1787326676,
+        "narHash": "sha256-lWhBbBvC05/xwivKBBiM2YNizpmgqCgyOIzomvRuwxs=",
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "32daa78aa882b7a43c508d1d5a5ad18a7968d731",
+        "type": "github"
+      },
+      "original": {
+        "owner": "ipetkov",
+        "repo": "crane",
+        "rev": "32daa78aa882b7a43c508d1d5a5ad18a7968d731",
+        "type": "github"
+      }
+    },
     "nixpkgs": {
       "locked": {
         "lastModified": 1788881743,
@@ -24,16 +40,17 @@
     },
     "scoot": {
       "inputs": {
+        "crane": "crane",
         "nixpkgs": [
           "nixpkgs"
         ]
       },
       "locked": {
-        "lastModified": 1790721404,
-        "narHash": "sha256-lDhW9zv1Z1Ht6qt0zIRmvr/DYPLqKtg8HrT1TyLPrBo=",
+        "lastModified": 1791174495,
+        "narHash": "sha256-Yn4lx3VX3e/F9mqwbgVMG6jViwKIkFlR1erVTWSaJh0=",
         "owner": "scoot-sh",
         "repo": "scoot",
-        "rev": "03398406eeb70fa63981ce9c01dfeebd66a5c52a",
+        "rev": "7cbb2f760e1648d539d1ab6b8ba44d3ee12ef25e",
         "type": "github"
       },
       "original": {

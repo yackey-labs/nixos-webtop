@@ -24,6 +24,14 @@ chown abc:abc /config
 if [ "${SKIP_CHOWN_CONFIG:-false}" != "true" ]; then
   chown -R abc:abc /config 2>/dev/null || true
 fi
+# abc-owned homes for XDG state: some services run as root and create
+# /config/.local/state as root on their first start, which would leave abc's
+# own state writers (scootbg's per-profile wallpaper restore, ...) unable to
+# create their directories underneath it. Pre-create them here, while this
+# script is still root and before s6-svscan starts the services; a root
+# service can still write into an abc-owned parent, but not vice versa.
+mkdir -p /config/.local/bin /config/.local/share /config/.local/state
+chown -R abc:abc /config/.local
 
 export XDG_RUNTIME_DIR="/run/user/${PUID}"
 mkdir -p "$XDG_RUNTIME_DIR"
@@ -33,15 +41,44 @@ chown abc:abc "$XDG_RUNTIME_DIR"
 [ -s /etc/machine-id ] || dbus-uuidgen > /etc/machine-id
 
 # ---- default per-user config (first run) ---------------------------------
+# Copy $1 onto $2 so the destination ends up user-writable even when either
+# side is a read-only nix-store file (mode 444): plain `cp` opens an existing
+# 444 destination in place and fails with Permission denied, so a later image
+# update would never replace a seeded 444 copy. Unlink-first plus chmod fixes
+# both halves.
+install_default() { # src dst
+  cp -L --remove-destination "$1" "$2" || return 1
+  chmod u+w "$2" || return 1
+}
+
+# Nanosecond backup name with a collision loop (see startwm-scoot.sh): two
+# updates inside one second must not overwrite the first backup.
+backup_name() { # dst; prints a free <dst>.bak-<ts> path
+  local ts suffix i
+  ts=$(date +%s%N)
+  suffix="$ts"
+  i=0
+  while [ -e "$1.bak-$suffix" ]; do
+    i=$((i+1))
+    suffix="${ts}-$i"
+  done
+  printf '%s.bak-%s' "$1" "$suffix"
+}
 CONF_DIR="$HOME/.config/openbox"
 mkdir -p "$HOME/.config"
 if [ ! -f "$CONF_DIR/autostart" ]; then
-  mkdir -p "$CONF_DIR"
-  cp /defaults/autostart "$CONF_DIR/autostart"
+  if mkdir -p "$CONF_DIR" && install_default /defaults/autostart "$CONF_DIR/autostart"; then
+    :
+  else
+    echo "[init] ERROR: seeding $CONF_DIR/autostart failed; skipping" >&2
+  fi
 fi
 if [ ! -f "$CONF_DIR/menu.xml" ]; then
-  mkdir -p "$CONF_DIR"
-  cp /defaults/menu.xml "$CONF_DIR/menu.xml"
+  if mkdir -p "$CONF_DIR" && install_default /defaults/menu.xml "$CONF_DIR/menu.xml"; then
+    :
+  else
+    echo "[init] ERROR: seeding $CONF_DIR/menu.xml failed; skipping" >&2
+  fi
 fi
 # Per-app config templates baked into the image (/defaults/config/<app> -> ~/.config/<app>).
 #
@@ -77,42 +114,89 @@ for tpl in /defaults/config/*/; do
   [ -f "$manifest" ] && had_manifest=1
 
   (cd "$tpl" && find . -type f -o -type l) | sed 's|^\./||' | while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
     src="$tpl$rel"
     dst="$dest/$rel"
     new_sum=$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)
-    printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+    # N4: never half-update the manifest. The new manifest line for this
+    # file is appended only after its install succeeds; on any failure we
+    # log loudly, skip the file, and carry the old manifest line (if any)
+    # forward so the next boot retries instead of believing the new
+    # default shipped.
+    if [ -z "$new_sum" ]; then
+      echo "[init] ERROR: $app/$rel: cannot read image default $src; skipping" >&2
+      if [ "$had_manifest" -eq 1 ]; then
+        awk -v r="$rel" '$2==r {print $0}' "$manifest" 2>/dev/null | head -1 >> "$new_manifest"
+      fi
+      continue
+    fi
 
     if [ ! -f "$dst" ]; then
-      mkdir -p "$(dirname "$dst")"; cp -L "$src" "$dst"; continue
+      if ! mkdir -p "$(dirname "$dst")"; then
+        echo "[init] ERROR: $app/$rel: cannot create parent directory; skipping" >&2
+        continue
+      fi
+      if ! install_default "$src" "$dst"; then
+        echo "[init] ERROR: $app/$rel: install_default failed; skipping" >&2
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+      continue
     fi
 
     cur_sum=$(sha256sum "$dst" 2>/dev/null | cut -d' ' -f1)
-    [ "$cur_sum" = "$new_sum" ] && continue
+    if [ "$cur_sum" = "$new_sum" ]; then
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+      continue
+    fi
 
     if [ "$had_manifest" -eq 0 ]; then
-      ts=$(date +%Y%m%d%H%M%S)
-      echo "[init] $app/$rel differs from the image default and predates config tracking; keeping yours as $rel.bak-$ts"
-      cp -L "$dst" "$dst.bak-$ts"
-      cp -L "$src" "$dst"
+      if ! bak=$(backup_name "$dst"); then
+        echo "[init] ERROR: $app/$rel: backup_name failed; skipping" >&2
+        continue
+      fi
+      echo "[init] $app/$rel differs from the image default and predates config tracking; keeping yours as $(basename "$bak")"
+      if ! cp -L "$dst" "$bak"; then
+        echo "[init] ERROR: $app/$rel: backup copy to $bak failed; skipping (leaving yours in place)" >&2
+        continue
+      fi
+      if ! install_default "$src" "$dst"; then
+        echo "[init] ERROR: $app/$rel: install_default failed after backup (backup kept at $bak); skipping" >&2
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
       continue
     fi
 
     old_sum=$(awk -v r="$rel" '$2==r {print $1}' "$manifest" 2>/dev/null | head -1)
     if [ "$cur_sum" = "$old_sum" ]; then
-      cp -L "$src" "$dst"                       # untouched since we shipped it
+      if ! install_default "$src" "$dst"; then
+        echo "[init] ERROR: $app/$rel: install_default failed; skipping (keeping old manifest entry)" >&2
+        awk -v r="$rel" '$2==r {print $0}' "$manifest" 2>/dev/null | head -1 >> "$new_manifest"
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
     else
       echo "[init] $app/$rel was edited locally; image default written to $rel.new"
-      cp -L "$src" "$dst.new"
+      if ! install_default "$src" "$dst.new"; then
+        echo "[init] ERROR: $app/$rel: install_default for $rel.new failed; skipping (keeping old manifest entry)" >&2
+        awk -v r="$rel" '$2==r {print $0}' "$manifest" 2>/dev/null | head -1 >> "$new_manifest"
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
     fi
   done
 
-  mv "$new_manifest" "$manifest"
+  mv "$new_manifest" "$manifest" || echo "[init] ERROR: $app: cannot update manifest $manifest; skipping" >&2
 done
 
 # i3 would otherwise pop its first-run config wizard; seed the stock config instead.
 if command -v i3 >/dev/null 2>&1 && [ ! -f "$HOME/.config/i3/config" ] && [ -f /usr/etc/i3/config ]; then
-  mkdir -p "$HOME/.config/i3"
-  cp /usr/etc/i3/config "$HOME/.config/i3/config"
+  if mkdir -p "$HOME/.config/i3" && install_default /usr/etc/i3/config "$HOME/.config/i3/config"; then
+    :
+  else
+    echo "[init] ERROR: seeding $HOME/.config/i3/config failed; skipping" >&2
+  fi
 fi
 chown -R abc:abc "$HOME/.config"
 

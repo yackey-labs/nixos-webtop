@@ -30,7 +30,7 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-webtop-i3`  | `image-base` + i3, i3status, dmenu, xfce4-terminal, Chromium | `webtop:arch-i3`             |
 | `image-webtop-niri`| Wayland mode: niri + noctalia-shell, foot, Chromium (Wayland), nautilus, xwayland-satellite | no direct equivalent (closest: `webtop:arch-i3` with `PIXELFLUX_WAYLAND=true`/sway) |
 | `image-webtop-hyprland`| Wayland mode: Hyprland + waybar, fuzzel, mako, swaybg, foot, Chromium | no equivalent |
-| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper (scoot's peeking cat), ghostty, foot, nautilus, Chromium (Wayland) | no equivalent |
+| `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper, ghostty, foot, starship, Helix, btop, lazygit, nautilus, Chromium (Wayland). Four runtime looks (`SCOOT_LOOK`: `radial-burst` default, `music-desk`, `vinyl-sunset`, `moonrise`) | no equivalent |
 | `image-scoot-dev`| Scoot dev session: Selkies + scoot + foot + fuzzel only (no browser, file manager, bar or wallpaper). Local scoot/scootbar/scootbg checkouts slot in via `--override-input` | no equivalent |
 
 Both are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
@@ -143,8 +143,8 @@ as its target. Two things make it a better fit here than niri or Hyprland:
   pixelflux only renders while a browser is attached; scoot runs its own 16 ms
   frame timer and its `present()` drops a frame rather than blocking. Confirmed
   on the cluster: with no browser attached, ghostty renders and fuzzel maps an
-  overlay layer surface. (This image still wraps noctalia in a retry loop, but
-  for a different failure — see below.)
+  overlay layer surface. (The bar going missing is the tell that the session
+  script's supervision loop has something to restart — see below.)
 - **It has a control socket.** Every layout action, plus synthetic key, text,
   pointer and click input, screenshots and window/output introspection, is a
   request on a Unix socket (`$XDG_RUNTIME_DIR/scoot.sock`, mode 0600, same-uid
@@ -153,23 +153,69 @@ as its target. Two things make it a better fit here than niri or Hyprland:
   first-class client rather than something bolted on with `xdotool`.
 
 The desktop on top is deliberately thin: [scootbar](https://github.com/scoot-sh/scoot/tree/main/docs/scootbar)
-(scoot's own status bar, from the same flake input) for the top bar
-(clickable workspace numbers and a clock), [fuzzel](https://codeberg.org/dnkl/fuzzel) as the launcher,
-spawned fresh on every use, and [scootbg](https://github.com/scoot-sh/scoot/tree/main/docs/scootbg)
-(scoot's own wallpaper daemon, from the same flake input) for the wallpaper -- scoot's peeking ASCII cat (`docs/assets/CatPeeking.png`),
-vendored from the scoot repo into `/defaults/scoot-cat-peeking.png`. scootbar
-reads workspaces over `ext-workspace-v1`. Everything is started from `/defaults/scoot-session.sh`, which
-scoot runs as its `--` command, because scoot's config has no
-`spawn-at-startup` (and scoot's planned `[wallpaper]` section is not
-accepted yet). scootbg draws on the background layer without reserving
-space; scootbar reserves its bar height, so `scoot msg outputs` reporting
-`usable` below `rect` remains the "shell is up" signal.
+(scoot's own status bar, from the same flake input) for the top bar,
+[fuzzel](https://codeberg.org/dnkl/fuzzel) as the launcher, spawned fresh on
+every use, and [scootbg](https://github.com/scoot-sh/scoot/tree/main/docs/scootbg)
+(scoot's own wallpaper daemon, from the same flake input) for the wallpaper,
+started by scoot itself from the config's `[wallpaper]` section. scootbar
+reads workspaces over `ext-workspace-v1`. The config's `[autostart]` launches
+the bar once at startup through the `scoot-bar-look` wrapper (which adds the
+image's `--font` store path -- an action string splits on whitespace and never
+sees a shell, so that path cannot live in the config file), and
+`/defaults/scoot-session.sh` -- scoot's `--` command, running after the
+autostart entries -- keeps it alive after that: autostart is fire-and-forget
+and this container has no systemd to restart a crashed bar. scootbg draws on
+the background layer without reserving space; scootbar reserves its bar
+height, so `scoot msg outputs` reporting `usable` below `rect` remains the
+"shell is up" signal.
 
-There is intentionally no desktop shell and no screen locker in this image:
-the bar is a plain layer-shell client whose buttons take the same click path
-window buttons do. (scoot implements `ext-session-lock-v1`, so swaylock
-would work here if one is ever wanted; the session sits behind Selkies auth
-plus oauth2-proxy regardless.)
+### Looks
+
+One image carries all four of scoot's example looks, adapted for a
+browser-hosted nested session (Alt+Super doubled binds, cursor theme,
+no-CSD, full-width-first columns). Pick at run time:
+
+```sh
+docker run -e SCOOT_LOOK=music-desk ... selkies-nix-webtop-scoot:latest
+```
+
+| `SCOOT_LOOK` | what it is | wallpaper in the image |
+|---|---|---|
+| `radial-burst` (default) | Dark, high-contrast plum with a blue/orange ring and a floating translucent bar. The default because dark pixels encode cheapest over Selkies and stay readable on a phone screen. | radial-burst.png (Unsplash, redistributable) |
+| `music-desk` | Light paper-white desk with a blue ring and an edge-to-edge bar. Costs more encoded pixels full-screen and washes out faster on phones. | music-desk.png (Unsplash, redistributable) |
+| `vinyl-sunset` | Dark espresso with a sunset-orange ring. Ships a solid espresso color, NOT the illustration: its Pixabay license forbids passing it on standalone, and a published image is redistribution. | solid `#271A1F` (download the illustration yourself for your own config) |
+| `moonrise` | Calm dark night sky: slate navy through mauve to dusty rose under a huge amber disc, with an amber ring. Dark pixels encode cheaply over Selkies, like the default. | moonrise.png (Unsplash, redistributable) |
+
+![radial-burst look in the webtop](docs-screenshot-scoot-radial-burst.png)
+
+![music-desk look in the webtop](docs-screenshot-scoot-music-desk.png)
+
+![vinyl-sunset look in the webtop](docs-screenshot-scoot-vinyl-sunset.png)
+
+![moonrise look in the webtop](docs-screenshot-scoot-moonrise.png)
+
+Each look themes the whole session: compositor colors and gaps, bar layout
+and modules (including the bar's `load`/`cpu` command modules), foot palette
+and opacity, starship prompt, Helix theme, btop theme and lazygit colors
+(radial-burst's example ships only compositor, bar and foot, so that is all
+it themes). `startwm-scoot.sh` seeds the picked look into `/config/.config`
+(`scoot/config.toml` + `bar.toml`, `foot/foot.ini`, `starship.toml`, `helix/`,
+`btop/`, `lazygit/config.yml`, `~/.config/scoot/bin/load.sh` + `cpu.sh`) on first
+use and whenever `SCOOT_LOOK` changes; a file you edited is kept as
+`<file>.bak-<timestamp>`, never silently overwritten. Edits you make after
+that survive until the look changes. The wallpapers' redistribution terms
+live in `rootfs/defaults/scoot-looks/NOTICE.scoot-looks`; the three Unsplash
+images stay under the Unsplash License in every pulled copy of this image.
+
+There is intentionally no desktop shell, no screen locker and no greeter in
+this image: the bar is a plain layer-shell client whose buttons take the same
+click path window buttons do. scoot implements `ext-session-lock-v1`, but
+swaylock is not shipped and no idle daemon runs: blanking the screen of a
+browser tab is wrong (tab visibility is not user idleness), and the session
+sits behind Selkies auth plus oauth2-proxy regardless. Screen capture and
+remote-desktop portals are out for the same reason Selkies owns that path --
+it captures from its own compositor, not through `xdg-desktop-portal` -- and
+there is no D-Bus portal infrastructure in the container to serve them.
 
 Keys are bound **twice, on Alt and on Super**: Super is scoot's own modifier, but
 a browser tab rarely sees it, so the Alt column is what works without touching
@@ -177,18 +223,25 @@ the Selkies sidebar's keyboard-lock toggle. `Alt+h/j/k/l` move around,
 `Alt+Shift+h/j/k/l` move windows, `Alt+q` closes, `Alt+r` cycles column width,
 `Alt+Return`/`Alt+t` ghostty, `Alt+d` the fuzzel launcher, `Alt+b` Chromium,
 `Alt+e` nautilus. Quitting the session stays on
-`Super+Shift+e` alone. The seeded
-config is `rootfs/config/scoot/config.toml`, copied to `/config/.config/scoot/` on
-first run only; inside a terminal prefer the Super bindings, since `Alt+b`/`Alt+d`
-are readline's backward-word and kill-word. scootbar has no config file
-yet; its flags live in `/defaults/scoot-session.sh`.
+`Super+Shift+e` alone. The look's
+config is `rootfs/defaults/scoot-looks/<look>/scoot.toml`, seeded to
+`/config/.config/scoot/config.toml` on first use (with the look's `bar.toml`
+beside it, which scootbar reads from its default path); inside a terminal
+prefer the Super bindings, since `Alt+b`/`Alt+d`
+are readline's backward-word and kill-word. The bar's `--font` is the image's
+Nerd font file, passed by the `scoot-bar-look` wrapper -- the look files
+deliberately leave the font path out, since a store path is not portable.
 
-Because scoot has no XWayland, this is the only image that carries **no X11
+Because scoot's `[xwayland]` stays off here, this is the only image that
+carries **no X11
 userland at all** — `mkSelkiesImage { x11 = false; }` drops Xvfb, openbox, st,
 xterm, xdotool, xrandr, xclip and the rest, none of which anything in the image
 could have reached. (`xkeyboard_config` stays: libxkbcommon reads the same
 keymaps, so it was never X11-only.) The two X services already no-op under
 `PIXELFLUX_WAYLAND`, so nothing had to change at runtime to make that safe.
+Upstream XWayland is opt-in for a reason -- a whole extra server process plus
+a trust model where any X client can keylog -- and nothing in this image is
+an X application, so there is nothing to gain by opting in.
 
 One thing does need replacing rather than dropping. Selkies types text into the
 session by shelling out to `wtype`, which speaks `virtual-keyboard-v1` — a
@@ -208,6 +261,8 @@ Two limits worth knowing before deploying it:
 - **One output.** scoot drives a single output, so Selkies' second-screen mode
   is off here — as it is for every Wayland image in this repo, since Selkies
   only carves a single framebuffer into logical monitors on the X11 path.
+- **No idle blanking or locking.** Nothing turns the screen off or locks it;
+  see above for why.
 
 `SELKIES_MANUAL_WIDTH`/`HEIGHT` (default 1280x800) set the size the session
 *starts* at; browser resizes reflow from there. `SELKIES_USE_CSS_SCALING`

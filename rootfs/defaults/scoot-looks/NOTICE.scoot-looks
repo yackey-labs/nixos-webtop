@@ -1,0 +1,45 @@
+Wallpaper redistribution notice for the scoot looks shipped in this image
+(`rootfs/defaults/scoot-looks/`). A published Docker image is redistribution,
+so these terms apply to every copy of selkies-nix-webtop-scoot pulled from a
+registry, not just to this source tree. Nothing below is covered by this
+repository's GPL-3.0 license; each image stays under its own license.
+
+- `radial-burst/wallpaper.png` is "Colorful radial lines exploding on a dark
+  background" by Sufyan pir, published on Unsplash on June 18, 2026
+  (https://unsplash.com/illustrations/colorful-radial-lines-exploding-on-a-dark-background-ETTtKnva9MM).
+  Free to use under the Unsplash License (https://unsplash.com/license):
+  downloading, copying, modifying and distributing it -- including
+  commercially and without attribution -- is allowed, but compiling images to
+  build a similar or competing service is not. Credit in scoot's NOTICE and
+  docs/examples/radial-burst/README.md is a courtesy. Source: scoot's
+  docs/assets/wallpapers/radial-burst.png (scoot-sh/scoot, checked against
+  scoot main 39c3a5e1, 2026-10-04).
+
+- `music-desk/wallpaper.png` is "Musical instruments and audio equipment on a
+  white surface" by Alghozy (@artgho), published on Unsplash
+  (https://unsplash.com/illustrations/musical-instruments-and-audio-equipment-on-a-white-surface-b6Us5E-BO8w).
+  Same Unsplash License terms as above. Source: scoot's
+  docs/assets/wallpapers/music-desk.png (scoot-sh/scoot, same rev).
+
+- `moonrise/wallpaper.png` is "Silhouetted trees under moon and stars" by
+  saatvik 5554 (@saatvik_reddy_suravaram), published on Unsplash
+  (https://unsplash.com/illustrations/silhouetted-trees-under-moon-and-stars-jwBJOj6gakI).
+  Same Unsplash License terms as above. Source: scoot's
+  docs/assets/wallpapers/moonrise.png (scoot-sh/scoot, checked against
+  scoot main 7cbb2f76, 2026-10-05).
+
+- `vinyl-sunset/` ships NO wallpaper image, deliberately. Its illustration
+  ("Lofi, vintage, vinyl, study, audio" by AninditaErina, marked AI-generated:
+  https://pixabay.com/illustrations/lofi-vintage-vinyl-study-audio-8390965/)
+  is under the Pixabay Content License
+  (https://pixabay.com/service/license/), which forbids passing the content
+  on standalone, substantially as it exists on Pixabay. The look's
+  `[wallpaper]` is the illustration's own espresso (#271A1F) instead. To see
+  the real illustration, download it yourself from Pixabay and point your
+  ~/.config/scoot/config.toml [wallpaper] image at your copy. No wallhaven
+  or Chillhop image is used anywhere in this image.
+
+The `.toml`, `.ini`, `.yml`, `.css`, `.sh` and `.theme` look files are adapted
+from scoot's docs/examples/moonrise, docs/examples/vinyl-sunset,
+docs/examples/music-desk and docs/examples/radial-burst (scoot-sh/scoot, MIT);
+each file's header says what this image changed and why.

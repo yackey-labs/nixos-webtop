@@ -1,30 +1,59 @@
-# scoot config for the Nix Selkies webtop -- Catppuccin Mocha, to match the
-# niri and Hyprland images. Copied to ~/.config/scoot/config.toml on first
-# run only; edit it there freely.
+# The "radial burst" look for the Nix Selkies webtop: a dark plum background, a
+# thin blue ring around the focused window and a thin orange one around the
+# rest, rounded corners, and the radial-burst wallpaper. Adapted from scoot's
+# docs/examples/radial-burst/scoot.toml (scoot-sh/scoot, MIT) with these
+# webtop adaptations:
 #
-# Every setting is read once at startup -- scoot has no config reload, so a
-# change here means restarting the `de` service (or the container).
+# - [wallpaper] image points at the copy shipped in this image
+#   (/defaults/scoot-looks/radial-burst/wallpaper.png). That file is "Colorful
+#   radial lines exploding on a dark background" by Sufyan pir, under the
+#   Unsplash License (free to redistribute, including commercially; see
+#   NOTICE.scoot-looks in this directory). It stays under that license here.
+# - [autostart] launches the bar through the scoot-bar-look wrapper (which
+#   adds the image's --font store path); the session script still supervises
+#   it, because autostart entries are fire-and-forget and this container has
+#   no systemd to restart a crashed bar.
+# - [binds] are the webtop's Alt+Super doubled set (a browser tab rarely sees
+#   Super), not the example's Super-only binds. The example's Super+m
+#   full-width column bind is kept.
+# - cursor_theme + prefer_no_csd for the nested session; column defaults kept
+#   full-width-first for a browser window that is often the only thing on
+#   screen.
+#
+# Picked at container start with SCOOT_LOOK=radial-burst (the default). The
+# start script seeds this file to ~/.config/scoot/config.toml on first use;
+# edits there survive until the look changes.
 
 [layout]
-# scoot clamps focus_ring_width to half of gap, so a gap this size leaves
-# room for the 3px ring below and nothing wider.
-gap = 8
-# Fractions of the output width that Super+R cycles through. The full-width
-# entry matters more here than on a real display: a browser window is often
-# the only thing on screen.
-column_widths = [0.333, 0.5, 0.667, 1.0]
+gap = 18
+# The default thirds and half, new columns at half (index 1), plus a full-width
+# column (index 3): before maximize landed this was Super+m's stand-in;
+# Super+m is now the real maximize (`toggle-maximize`), and `cycle-column-width`
+# steps through all four.
+column_widths = [0.3333333333333333, 0.5, 0.6666666666666666, 1.0]
 default_column_width = 1
 
 [appearance]
-focus_ring_width = 3
-focus_ring_active_color = "#cba6f7"    # mauve
-focus_ring_inactive_color = "#313244"  # surface0
-background_color = "#1e1e2e"           # base
+background_color = "#241721"          # shows until the wallpaper is up, and behind it
+corner_radius = 16                    # costs a little per frame: 0 is free
+focus_ring_width = 2                  # the color, not the weight, says which is focused
+focus_ring_inactive_width = 2
+focus_ring_active_color = "#31a9e5"
+focus_ring_inactive_color = "#e36e38"
 # Named cursor shapes (wp-cursor-shape-v1) come out of this theme; the image
 # installs it via themePackages. scoot's own drawn cursor is --tty only, so
 # cursor_size/cursor_color would do nothing here.
 cursor_theme = "catppuccin-mocha-dark-cursors"
 prefer_no_csd = true
+
+[wallpaper]
+image = "/defaults/scoot-looks/radial-burst/wallpaper.png"
+mode = "fill"
+
+[autostart]
+commands = [
+    "spawn scoot-bar-look",
+]
 
 # scoot's 18 built-in binds all live on Super. They stay bound -- a user bind
 # replaces a default, and there is no unbind -- and everything below is either
@@ -42,7 +71,10 @@ prefer_no_csd = true
 # The cost of the Alt column is inside terminals: Alt+b, Alt+d and Alt+l are
 # readline's backward-word, kill-word and downcase-word. Use the Super
 # equivalents there, or delete the Alt lines you do not want -- this file is
-# seeded to ~/.config/scoot/config.toml on first run and is yours after that.
+# seeded to ~/.config/scoot/config.toml on first use and is yours after that.
+
+# The full-width column above, on the look's own bind.
+"super+m" = "set-column-width 3"
 
 # ── Windows and columns ──────────────────────────────────────────────────
 "alt+h" = "focus-column left"
