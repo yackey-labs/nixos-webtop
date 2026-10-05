@@ -76,15 +76,6 @@ commands = [
 # The full-width column above, on the look's own bind.
 "super+m" = "set-column-width 3"
 
-# ghostty maps with equal minimum and maximum size, which trips scoot's
-# `[floating] auto` fixed-size heuristic and opens every terminal floating
-# (foot tiles because it never does this). The rule has the last word over
-# the heuristics, so ghostty stays in the strip. `Super+Shift+Space` (a
-# built-in default, left bound) still floats anything on demand.
-[[window_rule]]
-match_app_id = "*ghostty*"
-float = false
-
 # ── Windows and columns ──────────────────────────────────────────────────
 "alt+h" = "focus-column left"
 "alt+l" = "focus-column right"
@@ -130,3 +121,16 @@ float = false
 # Super+Shift+e rather than Super+Shift+q so a slipped finger cannot end the
 # session, and an Alt copy of it -- one key from Alt+shift+... nothing, but
 # well inside the range a browser forwards -- gives that care back up.
+
+# Window rules come last: a `[[window_rule]]` header ends the `[binds]`
+# table, so anything bound after it would land in the rule and fail the whole
+# file (scoot rejects an unknown field by falling back to defaults).
+#
+# ghostty maps with equal minimum and maximum size, which trips scoot's
+# `[floating] auto` fixed-size heuristic and opens every terminal floating
+# (foot tiles because it never does this). The rule has the last word over
+# the heuristics, so ghostty stays in the strip. `Super+Shift+Space` (a
+# built-in default, left bound) still floats anything on demand.
+[[window_rule]]
+match_app_id = "*ghostty*"
+float = false

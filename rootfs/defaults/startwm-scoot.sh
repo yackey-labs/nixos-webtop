@@ -77,9 +77,13 @@ if [ ! -f "$MARKER" ] || [ "$(cat "$MARKER" 2>/dev/null)" != "$LOOK" ]; then
     done
   fi
   [ -f "$SRC/lazygit.yml" ] && seed "$SRC/lazygit.yml" "$HOME/.config/lazygit/config.yml"
+  # The bar's command modules (bar.toml's [exec.load]/[exec.cpu] run these by
+  # bare name). They live beside the configs that reference them, not in
+  # ~/.local/bin: Selkies (running as root) owns ~/.local/state, so ~/.local
+  # itself is root-owned and this user cannot create ~/.local/bin there.
   for helper in load.sh cpu.sh; do
-    seed "/defaults/scoot-bin/$helper" "$HOME/.local/bin/$helper"
-    chmod +x "$HOME/.local/bin/$helper"
+    seed "/defaults/scoot-bin/$helper" "$HOME/.config/scoot/bin/$helper"
+    chmod +x "$HOME/.config/scoot/bin/$helper"
   done
   # The prompt: starship reads ~/.config/starship.toml by default, so this
   # only wires the init line in once. Looks without a starship.toml (radial
@@ -93,6 +97,11 @@ if [ ! -f "$MARKER" ] || [ "$(cat "$MARKER" 2>/dev/null)" != "$LOOK" ]; then
   fi
   echo "$LOOK" > "$MARKER"
 fi
+
+# Every start, not just seeding ones: a restarted container keeps its seeded
+# files but gets a fresh environment, and scoot inherits this one -- so the
+# bar's exec modules resolve load.sh/cpu.sh through it either way.
+export PATH="$HOME/.config/scoot/bin:$PATH"
 
 # The size to come up at. scoot follows the host's size for the life of the
 # session now (scoot-sh/scoot#144, fixed upstream), so a later browser resize
