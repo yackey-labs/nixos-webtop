@@ -248,23 +248,33 @@
           # fresh per use, and the wallpaper is a static image. Fewer moving
           # pieces between a click and its target.
           #
-          # There is NO XWayland here (scoot has none), so xwayland-satellite
-          # is absent and every application in this list is Wayland-native.
+          # There is NO XWayland here (scoot's [xwayland] stays off -- an
+          # extra ~55 MB server process plus the X userland, for zero X
+          # applications), so xwayland-satellite is absent and every
+          # application in this list is Wayland-native.
+          #
+          # The look (scoot + bar + foot + starship + Helix + btop + lazygit
+          # themes, one of radial-burst, music-desk, vinyl-sunset) is picked
+          # at run time with SCOOT_LOOK (default radial-burst); see
+          # rootfs/defaults/startwm-scoot.sh and NOTICE.scoot-looks.
           image-webtop-scoot = self.mkSelkiesImage {
             name = "selkies-nix-webtop-scoot";
             title = "Nix scoot";
             wayland = true;
             waylandSocketIndex = 2;
-            # Nothing in this image can reach an X server: scoot has no
-            # XWayland, so Xvfb, openbox, st, xterm, xdotool, xrandr and the
-            # rest of the X userland would be dead weight. This is the only
-            # image that can say that.
+            # Nothing in this image can reach an X server: [xwayland] is off
+            # (see above), so Xvfb, openbox, st, xterm, xdotool, xrandr and
+            # the rest of the X userland would be dead weight. This is the
+            # only image that can say that.
             x11 = false;
             startwm = ./rootfs/defaults/startwm-scoot.sh;
             configTemplates = {
-              scoot = ./rootfs/config/scoot;
+              # No scoot or foot here: startwm-scoot.sh seeds the picked
+              # look's scoot.toml / bar.toml / foot.ini (plus starship, Helix,
+              # btop, lazygit and the bar's load.sh/cpu.sh helpers) into
+              # ~/.config on first use and whenever SCOOT_LOOK changes, so
+              # one image carries all three looks.
               ghostty = ./rootfs/config/ghostty;
-              foot = ./rootfs/config/foot;
               fuzzel = ./rootfs/config/fuzzel;
             };
             extraEnv = [
@@ -299,8 +309,15 @@
               fuzzel
               nautilus
               chromium
+              # The looks theme these too, so they ride along: starship (the
+              # prompt), helix (the editor), btop (the monitor) and lazygit.
+              starship
+              helix
+              btop
+              lazygit
               self.chromiumWrapped
               self.wtypeViaScoot
+              self.scootBarLook
               (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
             ]) ++ [ self.scoot self.scootbg self.scootbar ] ++ self.themePackages;
           };
@@ -451,6 +468,19 @@
             [ "$#" -gt 0 ] || exit 0
             exec ${self.scoot}/bin/scoot msg type "$*"
           '');
+
+          # How the bar starts, in one place: scoot's [autostart] runs
+          # `spawn scoot-bar-look` (an action string splits on whitespace and
+          # never sees a shell, so the font store path cannot live in the
+          # config), and the session script's supervision loop calls the same
+          # wrapper when the bar is missing. The config file is the default
+          # path (~/.config/scoot/bar.toml), seeded per look by
+          # startwm-scoot.sh; --font names the image's Nerd font file, which
+          # the look files deliberately leave out (a store path is not
+          # portable). Extra arguments pass through to `scootbar daemon`.
+          scootBarLook = final.writeShellScriptBin "scoot-bar-look" ''
+            exec ${self.scootbar}/bin/scootbar daemon --font "$SCOOTBAR_FONT" "$@"
+          '';
 
           # Mirrors linuxserver's /usr/bin/chromium wrapper (plus Wayland detection).
           chromiumWrapped = final.lib.hiPrio (final.writeShellScriptBin "chromium" ''

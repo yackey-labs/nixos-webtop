@@ -1,0 +1,132 @@
+# The "vinyl sunset" look for the Nix Selkies webtop: a dark espresso
+# background, a sunset-orange ring around the focused window and a muted plum
+# one around the rest, rounded corners, and a SOLID espresso wallpaper color.
+# Adapted from scoot's docs/examples/vinyl-sunset/scoot.toml (scoot-sh/scoot,
+# MIT) with these webtop adaptations:
+#
+# - NO wallpaper image ships in this image, deliberately. The example's
+#   illustration ("Lofi, vintage, vinyl, study, audio" by AninditaErina, on
+#   Pixabay) is under the Pixabay Content License, which forbids passing it on
+#   standalone -- and a published Docker image is redistribution. So
+#   [wallpaper] here is the illustration's own espresso (#271A1F), which the
+#   translucent bar and terminals glow against just the same. To see the real
+#   illustration, download it yourself from
+#   https://pixabay.com/illustrations/lofi-vintage-vinyl-study-audio-8390965/
+#   and point your ~/.config/scoot/config.toml [wallpaper] image at your copy.
+# - [autostart] launches the bar through the scoot-bar-look wrapper (which
+#   adds the image's --font store path); the session script still supervises
+#   it, because autostart entries are fire-and-forget and this container has
+#   no systemd to restart a crashed bar.
+# - [binds] are the webtop's Alt+Super doubled set (a browser tab rarely sees
+#   Super), not the example's Super-only binds.
+# - cursor_theme + prefer_no_csd for the nested session; the column widths
+#   stay the webtop default (full-width-first: a browser window is often the
+#   only thing on screen).
+#
+# Picked at container start with SCOOT_LOOK=vinyl-sunset. The start script
+# seeds this file to ~/.config/scoot/config.toml on first use; edits there
+# survive until the look changes.
+
+[layout]
+gap = 20
+# Fractions of the output width that Super+R cycles through. The full-width
+# entry matters more here than on a real display: a browser window is often
+# the only thing on screen.
+column_widths = [0.333, 0.5, 0.667, 1.0]
+default_column_width = 1
+
+[appearance]
+background_color = "#271A1F"          # shows until the wallpaper is up, and behind it
+corner_radius = 12                    # costs a little per frame: 0 is free
+focus_ring_width = 2                  # the color, not the weight, says which is focused
+focus_ring_active_color = "#E59560"
+focus_ring_inactive_color = "#423F51"
+# Named cursor shapes (wp-cursor-shape-v1) come out of this theme; the image
+# installs it via themePackages. scoot's own drawn cursor is --tty only, so
+# cursor_size/cursor_color would do nothing here.
+cursor_theme = "catppuccin-mocha-dark-cursors"
+prefer_no_csd = true
+
+[wallpaper]
+# Solid espresso, not the illustration: the Pixabay Content License forbids
+# shipping that image in an image (see the header above). A color needs no
+# mode or fill.
+color = "#271A1F"
+
+[autostart]
+commands = [
+    "spawn scoot-bar-look",
+]
+
+# scoot's 18 built-in binds all live on Super. They stay bound -- a user bind
+# replaces a default, and there is no unbind -- and everything below is either
+# an addition or a replacement of one of them.
+[binds]
+# Everything is bound TWICE: once on Alt, once on Super.
+#
+# Super is scoot's own modifier and stays bound, but a browser almost never
+# sees it -- the host desktop grabs it first, so in a Selkies tab it only
+# reaches the session with the sidebar's keyboard-lock toggle on. Alt does
+# reach the tab, which makes the Alt column the one that works the moment you
+# open the page. Two combos that resolve to the same actual keys would both be
+# dropped, but these are different modifiers, so both sets load.
+#
+# The cost of the Alt column is inside terminals: Alt+b, Alt+d and Alt+l are
+# readline's backward-word, kill-word and downcase-word. Use the Super
+# equivalents there, or delete the Alt lines you do not want -- this file is
+# seeded to ~/.config/scoot/config.toml on first use and is yours after that.
+
+# ghostty maps with equal minimum and maximum size, which trips scoot's
+# `[floating] auto` fixed-size heuristic and opens every terminal floating
+# (foot tiles because it never does this). The rule has the last word over
+# the heuristics, so ghostty stays in the strip. `Super+Shift+Space` (a
+# built-in default, left bound) still floats anything on demand.
+[[window_rule]]
+match_app_id = "*ghostty*"
+float = false
+
+# ── Windows and columns ──────────────────────────────────────────────────
+"alt+h" = "focus-column left"
+"alt+l" = "focus-column right"
+"alt+j" = "focus-window down"
+"alt+k" = "focus-window up"
+"alt+shift+h" = "move-column left"
+"alt+shift+l" = "move-column right"
+"alt+shift+j" = "move-window down"
+"alt+shift+k" = "move-window up"
+"alt+ctrl+h" = "consume-or-expel left"
+"alt+ctrl+l" = "consume-or-expel right"
+"alt+r" = "cycle-column-width"
+"alt+q" = "close"
+
+# ── Workspaces ───────────────────────────────────────────────────────────
+# scoot's own defaults put these on Super+Ctrl; Ctrl is free on the Alt side,
+# so Alt+Ctrl+h/l is consume-or-expel above and workspaces get Alt+u/i.
+"alt+i" = "focus-workspace up"
+"alt+u" = "focus-workspace down"
+"alt+shift+i" = "move-window-to-workspace up"
+"alt+shift+u" = "move-window-to-workspace down"
+
+# ── Applications ─────────────────────────────────────────────────────────
+# Action strings are split on whitespace and never run through a shell.
+# The launcher is fuzzel, spawned fresh on every use -- it needs no daemon
+# the way a shell's built-in launcher would. There is no lock bind: this
+# session ships no screen locker (scoot implements ext-session-lock-v1, so
+# swaylock would work here if one is ever wanted), and the session sits
+# behind Selkies auth plus oauth2-proxy anyway.
+"alt+Return" = "spawn ghostty"
+"alt+t" = "spawn ghostty"
+"alt+d" = "spawn fuzzel"
+"alt+b" = "spawn chromium"
+"alt+e" = "spawn nautilus"
+
+"super+Return" = "spawn ghostty"
+"super+t" = "spawn ghostty"
+"super+d" = "spawn fuzzel"
+"super+b" = "spawn chromium"
+"super+e" = "spawn nautilus"
+
+# Quitting the session is left on Super alone, deliberately: scoot puts it on
+# Super+Shift+e rather than Super+Shift+q so a slipped finger cannot end the
+# session, and an Alt copy of it -- one key from Alt+shift+... nothing, but
+# well inside the range a browser forwards -- gives that care back up.
