@@ -108,6 +108,11 @@
 
           mkSelkiesImage = self.callPackage ./nix/image.nix { };
 
+          # Sibling builder for the VNC image (headless scoot + wayvnc +
+          # noVNC): separate from mkSelkiesImage on purpose -- different
+          # services, different ports, no Selkies/nginx/Xvfb.
+          mkVncImage = self.callPackage ./nix/vnc-image.nix { };
+
           # Shared look: one font with glyph coverage for the bars, one icon
           # theme, one cursor theme. Kept in a single list so the niri and
           # Hyprland images cannot drift apart visually.
@@ -322,6 +327,80 @@
             ]) ++ [ self.scoot self.scootbg self.scootbar ] ++ self.themePackages;
           };
 
+          # Scoot over VNC: the same scrolling-tiling session as
+          # image-webtop-scoot (same four SCOOT_LOOK looks from the same
+          # shared seeding code, same Alt+Super doubled binds), but scoot
+          # runs --headless directly -- no pixelflux, no nested host -- with
+          # [virtual_input] enabled, wayvnc (nixpkgs, >= 0.9) captures its
+          # virtual outputs, and noVNC (websockify) serves the desktop to a
+          # browser at http://host:6080/ with no client install. Native VNC
+          # clients use port 5900.
+          #
+          # Why this exists next to the Selkies image: one compositor instead
+          # of two (the Selkies image nests scoot inside pixelflux's own
+          # compositor), and VNC sends only damage -- so idle and typing
+          # should cost less. Video and heavy scrolling should cost MORE:
+          # Selkies streams WebRTC H.264 while VNC ships raw-ish
+          # framebuffer updates. Measured per workload in the README's
+          # benchmark table -- the honest numbers, not the theory.
+          #
+          # Security posture, stated loudly (also in the README): VNC has NO
+          # AUTH by default and binds loopback only (VNC_LISTEN=127.0.0.1).
+          # The browser path always works (in-container proxy); a native
+          # client needs VNC_LISTEN=0.0.0.0, and then either host-loopback
+          # publishing plus ssh -L, or VNC_PASSWORD. scoot's remote input
+          # never works while the session is locked, whatever VNC does.
+          #
+          # Audio: there is none. RFB carries no audio channel, so this
+          # image ships no audio daemon and nothing for it -- PulseAudio is
+          # present as a package only so applications that probe it (like
+          # Chromium) still start; what they play goes nowhere.
+          #
+          # Output size is a FIXED configured size (VNC_WIDTH/VNC_HEIGHT,
+          # default 1280x800; SELKIES_MANUAL_WIDTH/HEIGHT honored as
+          # aliases): noVNC's resize cannot drive scoot's headless output
+          # size -- ExtendedDesktopSize has no path to it (no
+          # output-management protocol for wayvnc to speak; scoot sizes
+          # headless outputs from its flags alone) -- so the browser scales
+          # the framebuffer to its window locally instead.
+          image-scoot-vnc = self.mkVncImage {
+            name = "scoot-vnc";
+            title = "Scoot VNC";
+            startwm = ./rootfs/defaults/startwm-scoot-vnc.sh;
+            configTemplates = {
+              ghostty = ./rootfs/config/ghostty;
+              fuzzel = ./rootfs/config/fuzzel;
+            };
+            extraEnv = [
+              "TERMINAL=ghostty"
+              "XDG_CURRENT_DESKTOP=scoot"
+              "XCURSOR_THEME=catppuccin-mocha-dark-cursors"
+              "XCURSOR_SIZE=24"
+              # scootbar takes a font FILE, not a family name (no
+              # fontconfig), and none of its well-known paths exist here.
+              "SCOOTBAR_FONT=${final.nerd-fonts.jetbrains-mono}/share/fonts/truetype/NerdFonts/JetBrainsMono/JetBrainsMonoNerdFont-Regular.ttf"
+            ];
+            extraPackages = (with final; [
+              wayvnc
+              novnc
+              python3Packages.websockify
+              ghostty
+              foot
+              fuzzel
+              nautilus
+              chromium
+              # The looks theme these too, so they ride along: starship (the
+              # prompt), helix (the editor), btop (the monitor) and lazygit.
+              starship
+              helix
+              btop
+              lazygit
+              self.chromiumWrapped
+              self.scootBarLook
+              (writeShellScriptBin "x-terminal-emulator" ''exec ${ghostty}/bin/ghostty "$@"'')
+            ]) ++ [ self.scoot self.scootbg self.scootbar ] ++ self.themePackages;
+          };
+
           # Scoot dev flavour: the same nested session minus everything under
           # test. No Chromium, no file manager, no bar, no wallpaper -- just
           # foot, fuzzel and the control socket, so rebuilds stay small and
@@ -508,7 +587,8 @@
           gst-wayland-display
           scoot scootbg scootbar
           image-base image-webtop-i3 image-webtop-niri image-webtop-hyprland
-          image-webtop-hyprland-gst image-webtop-scoot image-scoot-dev;
+          image-webtop-hyprland-gst image-webtop-scoot image-scoot-dev
+          image-scoot-vnc;
         default = pkgs.selkiesPackages.image-webtop-i3;
       });
 

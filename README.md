@@ -32,8 +32,9 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-webtop-hyprland`| Wayland mode: Hyprland + waybar, fuzzel, mako, swaybg, foot, Chromium | no equivalent |
 | `image-webtop-scoot`| Wayland mode: [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper, ghostty, foot, starship, Helix, btop, lazygit, nautilus, Chromium (Wayland). Four runtime looks (`SCOOT_LOOK`: `radial-burst` default, `music-desk`, `vinyl-sunset`, `moonrise`) | no equivalent |
 | `image-scoot-dev`| Scoot dev session: Selkies + scoot + foot + fuzzel only (no browser, file manager, bar or wallpaper). Local scoot/scootbar/scootbg checkouts slot in via `--override-input` | no equivalent |
+| `image-scoot-vnc`| VNC mode: headless [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper, ghostty, foot, starship, Helix, btop, lazygit, nautilus, Chromium (Wayland), served by wayvnc + noVNC. Same four runtime looks (`SCOOT_LOOK`) as `image-webtop-scoot` | no equivalent |
 
-Both are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
+All are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
 
 ## Build and run
 
@@ -277,6 +278,124 @@ scoot applied only its first `xdg_surface` configure and letterboxed every
 later one — and it is fixed upstream in
 [scoot-sh/scoot#144](https://github.com/scoot-sh/scoot/issues/144), found by
 running this image.
+
+## scoot VNC image
+
+`image-scoot-vnc` serves the same scoot session as `image-webtop-scoot` --
+same four `SCOOT_LOOK` looks from the same shared seeding code
+(`rootfs/defaults/scoot-look-seed.sh`, sourced by both startwm scripts), same
+Alt+Super doubled binds -- over VNC instead of Selkies:
+
+- **One compositor instead of two.** scoot runs `--headless` directly (no
+  pixelflux, no nested host) with `[virtual_input] enabled = true`, and
+  [wayvnc](https://github.com/any1/wayvnc) (nixpkgs, >= 0.9, for
+  `ext-image-copy-capture-v1`) captures its virtual outputs. VNC sends only
+  damage, so an idle or typing desktop ships almost nothing.
+- **noVNC in front.** websockify serves the noVNC web client and proxies it
+  to wayvnc, so a browser at `http://host:6080/` gets the desktop with no
+  client install (it forwards to `/vnc.html?autoconnect=true&resize=scale&
+  reconnect=true`). Native VNC clients use port 5900 directly.
+- **Fixed output size.** `--headless` sizes outputs from its flags alone,
+  and ExtendedDesktopSize has no path to a headless output's size (no
+  output-management protocol for wayvnc to speak), so noVNC's resize can NOT
+  reflow the session the way a browser resize reflows the Selkies image --
+  the browser scales the fixed framebuffer locally instead. Size it with
+  `VNC_WIDTH`/`VNC_HEIGHT` (default 1280x800; `SELKIES_MANUAL_WIDTH/HEIGHT`
+  honored as aliases); `VNC_OUTPUTS` (1-8, default 1), `VNC_FPS` (default
+  30) and `VNC_KEYBOARD` (a layout name for wayvnc's `-k`) round it out.
+
+```sh
+docker run -d --name scoot-vnc \
+  -p 6080:6080 \
+  --shm-size=1g \
+  -v vnc-config:/config \
+  -e SCOOT_LOOK=moonrise \
+  scoot-vnc:latest
+# open http://localhost:6080/ -- no password by default, see below
+```
+
+### Security: read this before publishing the ports
+
+**VNC has no authentication by default and no encryption. The VNC port binds
+loopback only (`VNC_LISTEN=127.0.0.1`, port `VNC_PORT=5900`)** -- wayvnc's
+own default, repeated explicitly. Two consequences worth knowing:
+
+- The browser path always works: noVNC runs *inside* the container and
+  proxies to container-localhost, so `http://host:6080/` needs no VNC auth
+  and no published VNC port.
+- A native client can NOT reach a loopback-bound wayvnc through
+  `docker -p 5900:5900`: published ports land on the container's eth0,
+  which a loopback listener never sees (measured: instant EOF). For a
+  native client set `VNC_LISTEN=0.0.0.0` -- then either publish to host
+  loopback only (`-p 127.0.0.1:5900:5900`, reachable over
+  `ssh -L 5900:localhost:5900`) or set `VNC_PASSWORD`.
+
+Publishing an unauthenticated VNC port (`-p 5900:5900` with no password)
+exposes an open desktop to whoever can reach it. Either keep it on
+loopback as above, or set `VNC_PASSWORD` (and optionally `VNC_USER`,
+default `abc`). The image then writes a wayvnc config with password auth
+plus freshly generated RSA-AES and VeNCrypt (TLS) keys, kept in `/config`
+so they survive restarts. The DES fallback stays on
+(`relax_encryption`, `allow_broken_crypto`) because noVNC in a browser
+and macOS Screen Sharing only speak the DES challenge-response -- which
+uses the first 8 password characters and encrypts nothing. On an
+untrusted network, tunnel over SSH regardless.
+
+Two properties hold in every mode: scoot's remote input **never works while
+the session is locked** (motion, buttons, scroll and keys are dropped; a
+remote client cannot type into or dismiss the lock screen), and
+`[virtual_input]` is a virtual-pointer/keyboard gate only -- it grants no
+local privilege beyond what any same-uid process already has.
+
+### Audio: there is none
+
+RFB carries no audio channel, so this image ships no audio daemon and
+nothing for it. PulseAudio is present as a package only, so applications
+that probe it (Chromium) still start; what they play goes nowhere. If you
+need sound with your desktop, use the Selkies image (PulseAudio over its
+WebSocket path).
+
+### Benchmark vs the Selkies image (`image-webtop-scoot`)
+
+Same look (`radial-burst`), same foot contents, same 1280x800 output, both
+containers on the same Asahi M2 host under Docker, each with a viewer
+attached the whole time (a scripted RFB client pulling incremental updates
+for VNC -- a browser tab throttles its requests when headless, which
+starves the measurement; headless Chromium for Selkies, the only WebRTC
+option). Container CPU is the cgroup `cpu.stat` delta over host cores, RSS
+the cgroup `memory.stat` `anon` peak (process memory; `memory.current`
+swings with page cache and is not comparable run to run), network the
+container eth0's rx+tx bytes per second; each workload runs 60 s after a
+30 s settle. Typing is 10 fresh lines/s in foot, scrolling is a 10k-line
+file re-printed in full every 2 s with unique prefixes (re-printing
+identical bytes is a static screen -- zero damage -- which bit one early
+run and read as 3 KB/s), video is a 70 s 720p30 H.264 clip fullscreen and
+muted in Chromium.
+
+| workload | Selkies: CPU / RSS / net | VNC: CPU / RSS / net |
+|---|---|---|
+| idle, viewer attached | 5.0% / 52 MB / 11.1 KB/s | 0.0% / 61 MB / 0.9 KB/s |
+| typing in foot | 6.3% / 59 MB / 75 KB/s | 1.0% / 71 MB / 637 KB/s |
+| scrolling a long file | 5.6% / 61 MB / 13 KB/s | 0.3% / 75 MB / 329 KB/s |
+| video in Chromium | 9.2% / 335 MB / 1.07 MB/s | 4.6% / 351 MB / 9.4 MB/s |
+
+Input-to-pixel latency was not measured reproducibly (no latency rig on the
+host), so it is not claimed either way.
+
+Takeaway: the hypothesis held in both directions. VNC wins idle and CPU
+everywhere -- no second compositor, no x264 encode running at 60 fps, so an
+idle desktop costs 0.0% CPU and under 1 KB/s, against Selkies' 5.0% and
+11 KB/s just to hold a static screen. H.264 wins the wire on anything that
+moves: typing costs VNC 8x the bytes, scrolling 25x, fullscreen video 9x
+(9.4 MB/s of Tight-encoded damage vs 1.07 MB/s of H.264). Process memory is
+a wash except under video, where both sides are dominated by the
+in-container Chromium (~340 MB either way). Pick VNC for mostly-static
+desktops and thin links where idle efficiency matters; pick Selkies where
+the screen moves a lot.
+
+![radial-burst look over noVNC](docs-screenshot-scoot-vnc-radial-burst.png)
+
+![moonrise look over noVNC](docs-screenshot-scoot-vnc-moonrise.png)
 
 ## Not ported (yet)
 

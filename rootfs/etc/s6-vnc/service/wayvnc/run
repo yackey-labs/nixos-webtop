@@ -1,0 +1,78 @@
+#!/bin/bash
+# wayvnc against scoot's headless socket, as user abc.
+#
+# SECURITY default: no auth, bound to localhost (VNC_LISTEN=127.0.0.1,
+# VNC_PORT=5900). wayvnc itself only accepts localhost unless told otherwise;
+# the env vars below repeat that default explicitly so a reader sees the
+# posture in one place. A loopback listener is unreachable through
+# `docker -p 5900:5900` (published ports land on the container's eth0, so a
+# native client outside needs VNC_LISTEN=0.0.0.0); the in-container noVNC
+# proxy reaches it fine either way. With VNC_LISTEN=0.0.0.0, publishing the
+# port exposes an UNAUTHENTICATED desktop to the network -- either keep it on
+# loopback and reach it over `ssh -L`, or set VNC_PASSWORD (see below). This
+# is logged loudly on every start.
+RUNTIME="${XDG_RUNTIME_DIR:-/run/user/911}"
+
+# The session script publishes scoot's WAYLAND_DISPLAY here once the
+# compositor is up (s6 services do not inherit the de service's environment,
+# so a file is the handoff).
+echo "[wayvnc] waiting for $RUNTIME/scoot-display"
+until [ -f "$RUNTIME/scoot-display" ]; do sleep 0.5; done
+DISPLAY_NAME="$(cat "$RUNTIME/scoot-display")"
+echo "[wayvnc] scoot display is $DISPLAY_NAME; waiting for socket"
+until [ -S "$RUNTIME/$DISPLAY_NAME" ]; do sleep 0.5; done
+
+LISTEN="${VNC_LISTEN:-127.0.0.1}"
+PORT="${VNC_PORT:-5900}"
+FPS="${VNC_FPS:-30}"
+
+ARGS=(-a -f "$FPS")
+[ -n "${VNC_KEYBOARD:-}" ] && ARGS+=(-k "$VNC_KEYBOARD")
+
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  # Password auth. Credentials live in /config (the PVC), generated once, so
+  # a client that pins the server key (RSA-AES trust-on-first-use) does not
+  # get a stranger every restart. The config enables the DES fallback
+  # (relax_encryption + allow_broken_crypto) alongside RSA-AES and VeNCrypt:
+  # noVNC in a browser only speaks the DES challenge-response, and so does
+  # macOS Screen Sharing -- without the fallback both would lock out the
+  # moment a password is set. DES uses only the first 8 password characters
+  # and encrypts nothing: on an untrusted network tunnel over SSH instead.
+  WVNCDIR="$HOME/.config/wayvnc"
+  mkdir -p "$WVNCDIR"
+  chmod 700 "$WVNCDIR"
+  if [ ! -f "$WVNCDIR/rsa_key.pem" ]; then
+    openssl genrsa -out "$WVNCDIR/rsa_key.pem" 2048 2>/dev/null
+    chmod 600 "$WVNCDIR/rsa_key.pem"
+  fi
+  if [ ! -f "$WVNCDIR/tls_cert.pem" ]; then
+    openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -sha384 \
+      -days 3650 -nodes -keyout "$WVNCDIR/tls_key.pem" -out "$WVNCDIR/tls_cert.pem" \
+      -subj /CN=localhost -addext subjectAltName=DNS:localhost,IP:127.0.0.1 >/dev/null 2>&1
+    chmod 600 "$WVNCDIR/tls_key.pem"
+  fi
+  UMASK_OLD="$(umask)"; umask 077
+  cat > "$WVNCDIR/config" <<CFG
+use_relative_paths=true
+address=$LISTEN
+port=$PORT
+enable_auth=true
+username=${VNC_USER:-abc}
+password=$VNC_PASSWORD
+rsa_private_key_file=rsa_key.pem
+private_key_file=tls_key.pem
+certificate_file=tls_cert.pem
+relax_encryption=true
+allow_broken_crypto=true
+CFG
+  umask "$UMASK_OLD"
+  chmod 600 "$WVNCDIR/config"
+  echo "[wayvnc] AUTHENTICATED mode: password set (user ${VNC_USER:-abc}); DES fallback on for noVNC/macOS clients -- tunnel over SSH on untrusted networks" >&2
+  ARGS+=(-C "$WVNCDIR/config")
+else
+  echo "[wayvnc] OPEN mode: no VNC_PASSWORD, NO AUTHENTICATION on $LISTEN:$PORT -- keep it on loopback (ssh -L) or set VNC_PASSWORD" >&2
+  ARGS+=("$LISTEN:$PORT")
+fi
+
+cd "$HOME"
+exec s6-setuidgid abc env WAYLAND_DISPLAY="$DISPLAY_NAME" XDG_RUNTIME_DIR="$RUNTIME" wayvnc "${ARGS[@]}"

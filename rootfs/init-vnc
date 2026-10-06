@@ -1,0 +1,189 @@
+#!/bin/bash
+# Container entrypoint for the VNC image. Same shape as rootfs/init (the
+# Selkies images' entrypoint): one-shot setup as root, then exec s6-svscan
+# as PID 1. Slimmer on purpose: no nginx/ssl/dashboard, no Xvfb, no
+# pulseaudio daemon, no GPU/NVIDIA shims, no gamepads -- a headless scoot
+# plus wayvnc plus noVNC needs none of it.
+set -u
+
+log() { echo "[init-vnc] $*"; }
+
+log "Nix-built scoot VNC image starting (title: ${TITLE:-Scoot VNC})"
+
+PUID="${PUID:-911}"
+PGID="${PGID:-911}"
+
+# ---- user / group mapping ------------------------------------------------
+if [ "$(id -g abc)" != "$PGID" ]; then groupmod -o -g "$PGID" abc; fi
+if [ "$(id -u abc)" != "$PUID" ]; then usermod -o -u "$PUID" abc; fi
+log "abc uid=$(id -u abc) gid=$(id -g abc)"
+
+# ---- directories ---------------------------------------------------------
+mkdir -p /config /run/service
+chmod 1777 /tmp
+chown abc:abc /config
+if [ "${SKIP_CHOWN_CONFIG:-false}" != "true" ]; then
+  chown -R abc:abc /config 2>/dev/null || true
+fi
+# abc-owned homes for XDG state (see rootfs/init: a root-owned
+# /config/.local/state would wedge abc's own state writers).
+mkdir -p /config/.local/bin /config/.local/share /config/.local/state
+chown -R abc:abc /config/.local
+
+export XDG_RUNTIME_DIR="/run/user/${PUID}"
+mkdir -p "$XDG_RUNTIME_DIR"
+chmod 700 "$XDG_RUNTIME_DIR"
+chown abc:abc "$XDG_RUNTIME_DIR"
+
+[ -s /etc/machine-id ] || dbus-uuidgen > /etc/machine-id
+
+# ---- default per-user config (first run, then tracked) -------------------
+# Same manifest algorithm as rootfs/init (kept in step with it by hand --
+# the two inits serve different images, so they cannot source one file):
+install_default() { # src dst
+  cp -L --remove-destination "$1" "$2" || return 1
+  chmod u+w "$2" || return 1
+}
+
+backup_name() { # dst; prints a free <dst>.bak-<ts> path
+  local ts suffix i
+  ts=$(date +%s%N)
+  suffix="$ts"
+  i=0
+  while [ -e "$1.bak-$suffix" ]; do
+    i=$((i+1))
+    suffix="${ts}-$i"
+  done
+  printf '%s.bak-%s' "$1" "$suffix"
+}
+CONF_DIR="$HOME/.config/openbox"
+mkdir -p "$HOME/.config"
+# Per-app config templates baked into the image (/defaults/config/<app> ->
+# ~/.config/<app>), with the shipped-manifest tracking from rootfs/init:
+#
+#   user's copy == what we last shipped   -> untouched, safe to update in place
+#   user's copy == the new default        -> already current, just record it
+#   otherwise                             -> the user edited it: keep theirs,
+#                                            drop <file>.new beside it and warn
+STATE_DIR="$HOME/.local/state/nixos-webtop"
+mkdir -p "$STATE_DIR"
+for tpl in /defaults/config/*/; do
+  [ -d "$tpl" ] || continue
+  app=$(basename "$tpl")
+  dest="$HOME/.config/$app"
+  manifest="$STATE_DIR/shipped-$app.sha256"
+  new_manifest="$manifest.next"
+  : > "$new_manifest"
+  had_manifest=0
+  [ -f "$manifest" ] && had_manifest=1
+
+  (cd "$tpl" && find . -type f -o -type l) | sed 's|^\./||' | while IFS= read -r rel; do
+    [ -n "$rel" ] || continue
+    src="$tpl$rel"
+    dst="$dest/$rel"
+    new_sum=$(sha256sum "$src" 2>/dev/null | cut -d' ' -f1)
+    if [ -z "$new_sum" ]; then
+      echo "[init-vnc] ERROR: $app/$rel: cannot read image default $src; skipping" >&2
+      if [ "$had_manifest" -eq 1 ]; then
+        awk -v r="$rel" '$2==r {print $0}' "$manifest" 2>/dev/null | head -1 >> "$new_manifest"
+      fi
+      continue
+    fi
+
+    if [ ! -f "$dst" ]; then
+      if ! mkdir -p "$(dirname "$dst")"; then
+        echo "[init-vnc] ERROR: $app/$rel: cannot create parent directory; skipping" >&2
+        continue
+      fi
+      if ! install_default "$src" "$dst"; then
+        echo "[init-vnc] ERROR: $app/$rel: install_default failed; skipping" >&2
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+      continue
+    fi
+
+    cur_sum=$(sha256sum "$dst" 2>/dev/null | cut -d' ' -f1)
+    if [ "$cur_sum" = "$new_sum" ]; then
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+      continue
+    fi
+
+    if [ "$had_manifest" -eq 0 ]; then
+      if ! bak=$(backup_name "$dst"); then
+        echo "[init-vnc] ERROR: $app/$rel: backup_name failed; skipping" >&2
+        continue
+      fi
+      echo "[init-vnc] $app/$rel differs from the image default and predates config tracking; keeping yours as $(basename "$bak")"
+      if ! cp -L "$dst" "$bak"; then
+        echo "[init-vnc] ERROR: $app/$rel: backup copy to $bak failed; skipping (leaving yours in place)" >&2
+        continue
+      fi
+      if ! install_default "$src" "$dst"; then
+        echo "[init-vnc] ERROR: $app/$rel: install_default failed after backup (backup kept at $bak); skipping" >&2
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+      continue
+    fi
+
+    old_sum=$(awk -v r="$rel" '$2==r {print $1}' "$manifest" 2>/dev/null | head -1)
+    if [ "$cur_sum" = "$old_sum" ]; then
+      if ! install_default "$src" "$dst"; then
+        echo "[init-vnc] ERROR: $app/$rel: install_default failed; skipping (keeping old manifest entry)" >&2
+        awk -v r="$rel" '$2==r {print $0}' "$manifest" 2>/dev/null | head -1 >> "$new_manifest"
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+    else
+      echo "[init-vnc] $app/$rel was edited locally; image default written to $rel.new"
+      if ! install_default "$src" "$dst.new"; then
+        echo "[init-vnc] ERROR: $app/$rel: install_default for $rel.new failed; skipping (keeping old manifest entry)" >&2
+        awk -v r="$rel" '$2==r {print $0}' "$manifest" 2>/dev/null | head -1 >> "$new_manifest"
+        continue
+      fi
+      printf '%s  %s\n' "$new_sum" "$rel" >> "$new_manifest"
+    fi
+  done
+
+  mv "$new_manifest" "$manifest" || echo "[init-vnc] ERROR: $app: cannot update manifest $manifest; skipping" >&2
+done
+chown -R abc:abc "$HOME/.config"
+
+# ---- locale --------------------------------------------------------------
+if [ -n "${LC_ALL:-}" ]; then
+  export LANG="$LC_ALL"
+  export LANGUAGE="${LC_ALL%.UTF-8}"
+fi
+
+# ---- hardening flags (subset of linuxserver's, same as rootfs/init) ------
+if [ "${HARDEN_DESKTOP:-false}" = "true" ]; then
+  export DISABLE_SUDO=true DISABLE_TERMINALS=true DISABLE_OPEN_TOOLS=true
+  export SELKIES_FILE_TRANSFERS= SELKIES_COMMAND_ENABLED=false
+fi
+if [ "${DISABLE_SUDO:-false}" = "true" ]; then
+  log "disabling sudo"
+  chmod 0000 /usr/local/bin/sudo
+fi
+
+# ---- VNC posture, logged loudly ------------------------------------------
+if [ -n "${VNC_PASSWORD:-}" ]; then
+  log "VNC auth ON (user ${VNC_USER:-abc}) on ${VNC_LISTEN:-127.0.0.1}:${VNC_PORT:-5900}; noVNC on ${NOVNC_LISTEN:-0.0.0.0}:${NOVNC_PORT:-6080}"
+else
+  log "WARNING: no VNC_PASSWORD -- the desktop is UNAUTHENTICATED on ${VNC_LISTEN:-127.0.0.1}:${VNC_PORT:-5900}. Keep it on loopback (ssh -L) or set VNC_PASSWORD."
+fi
+
+# ---- hand off to s6 ------------------------------------------------------
+# Same as rootfs/init: copy the service definitions onto /run (the image's
+# /etc is the layer's copy) and supervise the copy.
+rm -rf /run/service/*
+cp -r /etc/s6/service/. /run/service/
+mkdir -p /run/service/.s6-svscan
+cat > /run/service/.s6-svscan/finish <<'FIN'
+#!/bin/sh
+exit 0
+FIN
+chmod +x /run/service/.s6-svscan/finish
+
+log "starting services"
+exec s6-svscan /run/service
