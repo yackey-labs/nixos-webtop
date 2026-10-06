@@ -344,12 +344,14 @@
           # framebuffer updates. Measured per workload in the README's
           # benchmark table -- the honest numbers, not the theory.
           #
-          # Security posture, stated loudly (also in the README): VNC has NO
-          # AUTH by default and binds loopback only (VNC_LISTEN=127.0.0.1).
-          # The browser path always works (in-container proxy); a native
-          # client needs VNC_LISTEN=0.0.0.0, and then either host-loopback
-          # publishing plus ssh -L, or VNC_PASSWORD. scoot's remote input
-          # never works while the session is locked, whatever VNC does.
+           # Security posture, stated loudly (also in the README): VNC has NO
+           # AUTH by default. wayvnc itself binds loopback only
+           # (VNC_LISTEN=127.0.0.1) -- but noVNC listens on 0.0.0.0:6080
+           # with no auth, so the browser path is an open desktop to
+           # whoever can reach the port. Either keep it behind
+           # host-loopback publishing plus ssh -L, or set VNC_PASSWORD.
+           # scoot's remote input
+           # never works while the session is locked, whatever VNC does.
           #
           # Audio: there is none. RFB carries no audio channel, so this
           # image ships no audio daemon and nothing for it -- PulseAudio is
@@ -597,6 +599,19 @@
         default = pkgs.mkShell {
           packages = [ pkgs.selkiesPackages.selkies pkgs.prefetch-npm-deps pkgs.nix-prefetch-git ];
         };
+      });
+
+      # Fixture tests for the VNC image's ensure_virtual_input
+      # (rootfs/defaults/ensure-virtual-input.sh). Also run in CI's `test`
+      # job; both so the B3 fix cannot rot silently.
+      checks = forAllSystems (pkgs: {
+        ensure-virtual-input = pkgs.runCommand "ensure-virtual-input-test"
+          {
+            nativeBuildInputs = [ pkgs.bash pkgs.gawk ];
+          } ''
+          bash ${./tests/ensure-virtual-input.sh} ${./rootfs/defaults/ensure-virtual-input.sh}
+          touch $out
+        '';
       });
     };
 }

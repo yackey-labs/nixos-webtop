@@ -41,37 +41,11 @@ export ELECTRON_OZONE_PLATFORM_HINT=wayland
 # [virtual_input] enabled = true (restart-only; off means unadvertised).
 # The look files deliberately do NOT carry it -- they are shared with the
 # Selkies image, whose session must never offer remote-control globals --
-# so it is ensured here, every start, on the seeded config only:
-ensure_virtual_input() { # config path; idempotent, backs up before changing
-  cfg="$1"
-  [ -f "$cfg" ] || return 0
-  if grep -q '^\[virtual_input\]' "$cfg"; then
-    if grep -q '^enabled *= *true' "$cfg"; then
-      return 0
-    fi
-    ts=$(date +%s%N); suffix="$ts"; i=0
-    while [ -e "$cfg.bak-$suffix" ]; do i=$((i+1)); suffix="${ts}-$i"; done
-    cp -p "$cfg" "$cfg.bak-$suffix" || return 1
-    # Flip enabled inside the existing [virtual_input] section only: from
-    # its header to the next section header.
-    awk 'BEGIN{invi=0} /^\[virtual_input\]/{invi=1; print; next} /^\[/{invi=0} invi && /^[[:space:]]*enabled[[:space:]]*=/{print "enabled = true"; next} {print}' \
-      "$cfg" > "$cfg.new" || return 1
-    # The section may name no enabled key at all; then the awk above changed
-    # nothing, so append it under the header instead.
-    if ! awk '/^\[virtual_input\]/{invi=1; next} /^\[/{invi=0} invi && /^[[:space:]]*enabled[[:space:]]*=/{found=1} END{exit !found}' "$cfg.new"; then
-      awk '/^\[virtual_input\]/{print; print "enabled = true"; next} {print}' \
-        "$cfg.new" > "$cfg.new2" && mv "$cfg.new2" "$cfg.new" || return 1
-    fi
-    mv "$cfg.new" "$cfg" || return 1
-    echo "[startwm-scoot-vnc] enabled [virtual_input] in $cfg (backup $cfg.bak-$suffix)" >&2
-  else
-    ts=$(date +%s%N); suffix="$ts"; i=0
-    while [ -e "$cfg.bak-$suffix" ]; do i=$((i+1)); suffix="${ts}-$i"; done
-    cp -p "$cfg" "$cfg.bak-$suffix" || return 1
-    printf '\n[virtual_input]\nenabled = true\n' >> "$cfg" || return 1
-    echo "[startwm-scoot-vnc] appended [virtual_input] enabled = true to $cfg" >&2
-  fi
-}
+# so it is ensured here, every start, on the seeded config only
+# (see ensure-virtual-input.sh; VNC_VIRTUAL_INPUT=0 opts out to a
+# view-only desktop):
+# shellcheck source=/dev/null
+. /defaults/ensure-virtual-input.sh
 ensure_virtual_input "$HOME/.config/scoot/config.toml" || {
   echo "[startwm-scoot-vnc] ERROR: could not ensure [virtual_input]; remote input will not work" >&2
 }

@@ -42,8 +42,26 @@ if [ -n "${VNC_PASSWORD:-}" ]; then
   mkdir -p "$WVNCDIR"
   chmod 700 "$WVNCDIR"
   if [ ! -f "$WVNCDIR/rsa_key.pem" ]; then
-    openssl genrsa -out "$WVNCDIR/rsa_key.pem" 2048 2>/dev/null
+    # Traditional PKCS#1 ("BEGIN RSA PRIVATE KEY"): wayvnc's nettle loader
+    # rejects the PKCS#8 ("BEGIN PRIVATE KEY") that `openssl genrsa`
+    # emits by default since OpenSSL 3.x.
+    openssl genrsa -traditional -out "$WVNCDIR/rsa_key.pem" 2048 2>/dev/null
     chmod 600 "$WVNCDIR/rsa_key.pem"
+  elif grep -q 'BEGIN PRIVATE KEY' "$WVNCDIR/rsa_key.pem"; then
+    # Migration: a key persisted in /config by an earlier image revision is
+    # still PKCS#8, which wayvnc cannot load. Convert it in place to
+    # traditional PKCS#1; the public half is unchanged, so clients that
+    # pinned the server key keep trusting it.
+    echo "[wayvnc] converting persisted RSA key from PKCS#8 to traditional PKCS#1 (nettle loader)" >&2
+    if openssl rsa -traditional -in "$WVNCDIR/rsa_key.pem" -out "$WVNCDIR/rsa_key.pem.new" 2>/dev/null; then
+      mv "$WVNCDIR/rsa_key.pem.new" "$WVNCDIR/rsa_key.pem"
+      chmod 600 "$WVNCDIR/rsa_key.pem"
+    else
+      echo "[wayvnc] WARNING: RSA key conversion failed; regenerating" >&2
+      rm -f "$WVNCDIR/rsa_key.pem.new"
+      openssl genrsa -traditional -out "$WVNCDIR/rsa_key.pem" 2048 2>/dev/null
+      chmod 600 "$WVNCDIR/rsa_key.pem"
+    fi
   fi
   if [ ! -f "$WVNCDIR/tls_cert.pem" ]; then
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -sha384 \
@@ -67,6 +85,15 @@ allow_broken_crypto=true
 CFG
   umask "$UMASK_OLD"
   chmod 600 "$WVNCDIR/config"
+  # This script runs as root but wayvnc itself runs as abc (see the exec
+  # below): the dir and everything in it must be owned by abc, keeping
+  # 0700/0600, or wayvnc can neither traverse the dir nor read the files
+  # ("Failed to load config. Permission denied"). The chown also repairs
+  # credentials persisted by earlier revisions, which are root-owned.
+  chown -R abc:abc "$WVNCDIR"
+  chmod 700 "$WVNCDIR"
+  chmod 600 "$WVNCDIR/rsa_key.pem" "$WVNCDIR/config"
+  [ -f "$WVNCDIR/tls_key.pem" ] && chmod 600 "$WVNCDIR/tls_key.pem"
   echo "[wayvnc] AUTHENTICATED mode: password set (user ${VNC_USER:-abc}); DES fallback on for noVNC/macOS clients -- tunnel over SSH on untrusted networks" >&2
   ARGS+=(-C "$WVNCDIR/config")
 else

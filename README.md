@@ -301,8 +301,11 @@ Alt+Super doubled binds -- over VNC instead of Selkies:
   reflow the session the way a browser resize reflows the Selkies image --
   the browser scales the fixed framebuffer locally instead. Size it with
   `VNC_WIDTH`/`VNC_HEIGHT` (default 1280x800; `SELKIES_MANUAL_WIDTH/HEIGHT`
-  honored as aliases); `VNC_OUTPUTS` (1-8, default 1), `VNC_FPS` (default
-  30) and `VNC_KEYBOARD` (a layout name for wayvnc's `-k`) round it out.
+   honored as aliases); `VNC_OUTPUTS` (1-8, default 1), `VNC_FPS` (default
+   30) and `VNC_KEYBOARD` (a layout name for wayvnc's `-k`) round it out.
+   `VNC_VIRTUAL_INPUT=0` opts out of the automatic `[virtual_input]
+   enabled = true` (see below) for a view-only desktop: video keeps
+   working, but no pointer or keyboard input ever reaches the session.
 
 ```sh
 docker run -d --name scoot-vnc \
@@ -338,8 +341,13 @@ plus freshly generated RSA-AES and VeNCrypt (TLS) keys, kept in `/config`
 so they survive restarts. The DES fallback stays on
 (`relax_encryption`, `allow_broken_crypto`) because noVNC in a browser
 and macOS Screen Sharing only speak the DES challenge-response -- which
-uses the first 8 password characters and encrypts nothing. On an
-untrusted network, tunnel over SSH regardless.
+ uses the first 8 password characters and encrypts nothing. On an
+ untrusted network, tunnel over SSH regardless. Credentials are owned by
+ `abc` (the user wayvnc runs as) with 0600/0700 permissions, and the RSA
+ key is traditional PKCS#1, which is what wayvnc's nettle loader reads. A
+ key persisted by an earlier image revision -- PKCS#8 and root-owned -- is
+ migrated on start: converted in place to PKCS#1 (the public half is
+ unchanged, so pinned clients keep trusting it) and re-owned to `abc`.
 
 Two properties hold in every mode: scoot's remote input **never works while
 the session is locked** (motion, buttons, scroll and keys are dropped; a
@@ -381,6 +389,13 @@ muted in Chromium.
 
 Input-to-pixel latency was not measured reproducibly (no latency rig on the
 host), so it is not claimed either way.
+
+The idle 0.9 KB/s assumes a self-clocked viewer -- one outstanding
+incremental request, which is what noVNC does -- so the server only ships
+real damage. A polling client costs far more on the same idle desktop: a
+1 Hz Raw poller measured 79 KB/s. Read the idle cell as
+apparatus-conditional, not intrinsic; the ranking (VNC idles far cheaper
+than Selkies for well-behaved viewers) still holds.
 
 Takeaway: the hypothesis held in both directions. VNC wins idle and CPU
 everywhere -- no second compositor, no x264 encode running at 60 fps, so an

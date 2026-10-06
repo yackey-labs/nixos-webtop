@@ -68,6 +68,17 @@ jobs:
             f.write(f"matrix={json.dumps({'image': picked})}\n")
           EOF
 
+  # Shell fixture tests (no Nix needed): the VNC image's
+  # ensure_virtual_input cases. The same script is also wired into
+  # `nix flake check` (checks.ensure-virtual-input).
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: ensure_virtual_input fixtures
+        run: bash tests/ensure-virtual-input.sh
+
   build:
     needs: setup
     runs-on: ubuntu-latest

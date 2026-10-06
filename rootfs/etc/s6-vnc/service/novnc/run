@@ -4,10 +4,14 @@
 # http://host:NOVNC_PORT/ lands on the desktop with no client install;
 # native clients use the plain VNC port directly.
 #
-# websockify is invoked directly (not via the `novnc` wrapper): the wrapper
-# falls back to a websockify store path baked in at ITS build time, which
-# need not exist in THIS image's store. The web files still come from the
-# `novnc` package (/usr/share/webapps/novnc).
+# websockify is invoked directly (not via the `novnc` wrapper): under s6
+# the proxy must be an exec-able foreground process -- the wrapper starts
+# websockify in the background and waits on it, and its missing-dependency
+# fallback tries a `git clone`; neither belongs in a service script. (The
+# wrapper's baked websockify store path does exist in this image -- both
+# come from the same nixpkgs revision -- so that is not the reason.) The
+# web files still come from the `novnc` package
+# (/usr/share/webapps/novnc).
 RUNTIME="${XDG_RUNTIME_DIR:-/run/user/911}"
 PORT="${NOVNC_PORT:-6080}"
 LISTEN="${NOVNC_LISTEN:-0.0.0.0}"
