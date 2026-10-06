@@ -55,7 +55,10 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-scoot-dev`| Scoot dev session: Selkies + scoot + foot + fuzzel only (no browser, file manager, bar or wallpaper). Local scoot/scootbar/scootbg checkouts slot in via `--override-input` | no equivalent |
 | `image-scoot-vnc`| VNC mode: headless [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper, ghostty, foot, starship, Helix, btop, lazygit, nautilus, Chromium (Wayland), served by wayvnc + noVNC. Same four runtime looks (`SCOOT_LOOK`) as `image-webtop-scoot` | no equivalent |
 
-All are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
+All are `dockerTools.buildLayeredImage` flake outputs for `x86_64-linux` and
+`aarch64-linux`. The registry ships both architectures for `image-scoot-vnc`
+and `image-webtop-scoot` (one multi-arch tag); the other images are pushed
+for amd64 only, so on arm64 build those locally from the flake.
 
 ## Build and run
 
