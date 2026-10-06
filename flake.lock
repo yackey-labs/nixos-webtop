@@ -46,11 +46,11 @@
         ]
       },
       "locked": {
-        "lastModified": 1791174495,
-        "narHash": "sha256-Yn4lx3VX3e/F9mqwbgVMG6jViwKIkFlR1erVTWSaJh0=",
+        "lastModified": 1791220582,
+        "narHash": "sha256-u6MSMt6s9LfnzoUIt71CG6FAEyp6z1zV085MLdXrzRQ=",
         "owner": "scoot-sh",
         "repo": "scoot",
-        "rev": "7cbb2f760e1648d539d1ab6b8ba44d3ee12ef25e",
+        "rev": "3ff4c5a2a0f8ad5cf699a1a41735577eec6ed51c",
         "type": "github"
       },
       "original": {
