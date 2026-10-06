@@ -3,13 +3,53 @@
 
   inputs.nixpkgs.url = "github:NixOS/nixpkgs/nixos-unstable";
 
+  # Prebuilt scoot/scootbg/scootbar, pushed to Cachix by scoot's own CI on
+  # every merge to main. A flake's `nixConfig` is *not* silently trusted:
+  # Nix asks whether to accept it on first use (unless `accept-flake-config`
+  # is set), and substituter settings from it apply only to trusted users.
+  # CI therefore also sets the same substituter in the system nix.conf via
+  # the nix-installer `extra-conf` (see .github/workflows/build.yml), which
+  # needs no prompt and works for untrusted users too. Key copied from
+  # scoot's own flake.nix.
+  nixConfig = {
+    extra-substituters = [ "https://scoot-sh.cachix.org" ];
+    extra-trusted-public-keys = [
+      "scoot-sh.cachix.org-1:QMj7CMw8uqZxrvqqm6SggdxTHz6Q4prt30ydDcXJXCo="
+    ];
+  };
+
   # scoot ships its own flake, so it is consumed from there rather than
   # re-packaged under nix/ the way selkies, pixelflux and gst-wayland-display
-  # are -- none of those has one. Its nixpkgs follows ours: scoot's flake pins
-  # a specific nixpkgs revision for its dev VM, and honouring that pin here
-  # would put a second glibc, wayland, libinput and udev in an image that
-  # already has one of each.
-  inputs.scoot.url = "github:scoot-sh/scoot";
+  # are -- none of those has one. Via FlakeHub (`scoot-sh/scoot/*`), so the
+  # pin floats across scoot's published releases instead of tracking its git
+  # main; the lock still records the exact rev (0.1.1659 at the time of
+  # writing).
+  #
+  # Its nixpkgs follows ours, deliberately, so the image carries one
+  # glibc/wayland stack: scoot's flake pins a specific nixpkgs revision for
+  # its dev VM (8ce4ef6 at scoot 0.1.1659), and honouring that pin here would
+  # put a second glibc, wayland, libinput and udev in an image that already
+  # has one of each.
+  #
+  # follows normally costs the Cachix hit -- scoot's CI pushes its packages
+  # to scoot-sh.cachix.org (see nixConfig above) built against scoot's own
+  # nixpkgs, so an overridden nixpkgs usually means new store paths and a
+  # from-source compile of scoot and Smithay on every build. Measured
+  # 2026-10-06 (scoot 0.1.1659, our nixpkgs d6524aa): keeping follows changes
+  # NOTHING. The scoot/scootbg/scootbar derivations are bit-identical with
+  # and without it -- both nixpkgs pins agree on scoot's whole build subgraph
+  # -- so the image-scoot-vnc tarball derivation is identical too (zero
+  # duplicate libraries), all three outputs resolve on Cachix, and the image
+  # build substitutes everything instead of compiling. So follows stays AND
+  # Cachix hits: one stack, no compile. If CI ever starts compiling scoot
+  # from source, the pins have diverged -- the fallback is dropping follows
+  # (at the cost of the second stack), not dropping Cachix.
+  #
+  # nixpkgs itself stays on github nixos-unstable, not FlakeHub: scoot pins a
+  # specific nixpkgs rev rather than a FlakeHub tracker, so moving our
+  # nixpkgs to FlakeHub would not align the two pins anyway -- it would only
+  # churn the whole world rev for no cache benefit.
+  inputs.scoot.url = "https://flakehub.com/f/scoot-sh/scoot/*";
   inputs.scoot.inputs.nixpkgs.follows = "nixpkgs";
 
   outputs = { self, nixpkgs, scoot }:

@@ -12,6 +12,27 @@ streamed by [Selkies](https://github.com/selkies-project/selkies) over WebSocket
 
 ![niri + noctalia-shell streamed from the aarch64 image](docs-screenshot-niri.png)
 
+## Quick start: scoot over VNC
+
+```sh
+docker run -d --name scoot-vnc \
+  -p 127.0.0.1:6080:6080 \
+  --shm-size=1g \
+  -v scoot-vnc-config:/config \
+  -e VNC_PASSWORD=change-me \
+  -e SCOOT_LOOK=radial-burst \
+  ghcr.io/yackey-labs/nixos-webtop-scoot-vnc:latest
+# open http://localhost:6080/ -- no client install; works on amd64 and arm64
+```
+
+No password is set by default, so keep the browser port on loopback as above.
+To reach it from elsewhere, set `VNC_PASSWORD` (and optionally `VNC_USER`) or
+tunnel over `ssh -L 6080:localhost:6080` -- see
+[Security](#security-read-this-before-publishing-the-ports) for the full
+posture. Prefer WebRTC with audio? Use the Selkies image instead
+([scoot image](#scoot-image)): the same session over ports 3000/3001, H.264
+instead of VNC.
+
 ## License
 
 GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
@@ -34,7 +55,10 @@ GPL-3.0. This is a port of [linuxserver/docker-baseimage-selkies][lsb] and
 | `image-scoot-dev`| Scoot dev session: Selkies + scoot + foot + fuzzel only (no browser, file manager, bar or wallpaper). Local scoot/scootbar/scootbg checkouts slot in via `--override-input` | no equivalent |
 | `image-scoot-vnc`| VNC mode: headless [scoot](https://github.com/scoot-sh/scoot) + scootbar, fuzzel, scootbg wallpaper, ghostty, foot, starship, Helix, btop, lazygit, nautilus, Chromium (Wayland), served by wayvnc + noVNC. Same four runtime looks (`SCOOT_LOOK`) as `image-webtop-scoot` | no equivalent |
 
-All are `dockerTools.buildLayeredImage` outputs for `x86_64-linux` and `aarch64-linux`.
+All are `dockerTools.buildLayeredImage` flake outputs for `x86_64-linux` and
+`aarch64-linux`. The registry ships both architectures for `image-scoot-vnc`
+and `image-webtop-scoot` (one multi-arch tag); the other images are pushed
+for amd64 only, so on arm64 build those locally from the flake.
 
 ## Build and run
 
@@ -370,7 +394,9 @@ containers on the same Asahi M2 host under Docker, each with a viewer
 attached the whole time (a scripted RFB client pulling incremental updates
 for VNC -- a browser tab throttles its requests when headless, which
 starves the measurement; headless Chromium for Selkies, the only WebRTC
-option). Container CPU is the cgroup `cpu.stat` delta over host cores, RSS
+option). Those numbers were measured with scoot `3ff4c5a`; the flake has
+since moved to scoot `0.1.1659` (`da790e8`) via FlakeHub. Container CPU is
+the cgroup `cpu.stat` delta over host cores, RSS
 the cgroup `memory.stat` `anon` peak (process memory; `memory.current`
 swings with page cache and is not comparable run to run), network the
 container eth0's rx+tx bytes per second; each workload runs 60 s after a

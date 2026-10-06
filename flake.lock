@@ -46,17 +46,16 @@
         ]
       },
       "locked": {
-        "lastModified": 1791220582,
-        "narHash": "sha256-u6MSMt6s9LfnzoUIt71CG6FAEyp6z1zV085MLdXrzRQ=",
-        "owner": "scoot-sh",
-        "repo": "scoot",
-        "rev": "3ff4c5a2a0f8ad5cf699a1a41735577eec6ed51c",
-        "type": "github"
+        "lastModified": 1791294526,
+        "narHash": "sha256-2CavwhKXGGlaJzPaQhfQen8rI1Je7eQxOOi0regEpnU=",
+        "rev": "da790e8e24f7525b48a311d012827d08a1b66ebc",
+        "revCount": 1659,
+        "type": "tarball",
+        "url": "https://api.flakehub.com/f/pinned/scoot-sh/scoot/0.1.1659%2Brev-da790e8e24f7525b48a311d012827d08a1b66ebc/01a11187-58ab-7561-98b7-bd8197b995e8/source.tar.gz"
       },
       "original": {
-        "owner": "scoot-sh",
-        "repo": "scoot",
-        "type": "github"
+        "type": "tarball",
+        "url": "https://flakehub.com/f/scoot-sh/scoot/%2A"
       }
     }
   },
