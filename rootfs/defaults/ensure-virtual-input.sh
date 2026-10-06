@@ -20,7 +20,7 @@ ensure_virtual_input() { # config path; idempotent, backs up before changing
   # Section header match, shared by the check and the flip below: the
   # section name with optional surrounding whitespace and an optional
   # trailing comment. A different section header ends the section.
-  if awk '/^[[:space:]]*\[[[:space:]]*virtual_input[[:space:]]*][[:space:]]*(#.*)?$/{invi=1; next} /^\[/{invi=0; next} invi && /^[[:space:]]*enabled[[:space:]]*=[[:space:]]*true([[:space:]]*(#.*)?)?$/{found=1} END{exit !found}' "$cfg"; then
+  if awk '/^[[:space:]]*\[[[:space:]]*virtual_input[[:space:]]*][[:space:]]*(#.*)?$/{invi=1; next} /^[[:space:]]*\[/{invi=0; next} invi && /^[[:space:]]*enabled[[:space:]]*=[[:space:]]*true([[:space:]]*(#.*)?)?$/{found=1} END{exit !found}' "$cfg"; then
     return 0
   fi
   ts=$(date +%s%N); suffix="$ts"; i=0
@@ -34,7 +34,7 @@ ensure_virtual_input() { # config path; idempotent, backs up before changing
       "$cfg" > "$cfg.new" || return 1
     # The section may name no enabled key at all; then the awk above changed
     # nothing, so insert the key under the first header instead.
-    if ! awk '/^[[:space:]]*\[[[:space:]]*virtual_input[[:space:]]*][[:space:]]*(#.*)?$/{invi=1; next} /^\[/{invi=0; next} invi && /^[[:space:]]*enabled[[:space:]]*=/{found=1} END{exit !found}' "$cfg.new"; then
+    if ! awk '/^[[:space:]]*\[[[:space:]]*virtual_input[[:space:]]*][[:space:]]*(#.*)?$/{invi=1; next} /^[[:space:]]*\[/{invi=0; next} invi && /^[[:space:]]*enabled[[:space:]]*=/{found=1} END{exit !found}' "$cfg.new"; then
       awk '/^[[:space:]]*\[[[:space:]]*virtual_input[[:space:]]*][[:space:]]*(#.*)?$/ && !done{print; print "enabled = true"; done=1; next} {print}' \
         "$cfg.new" > "$cfg.new2" && mv "$cfg.new2" "$cfg.new" || return 1
     fi

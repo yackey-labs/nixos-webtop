@@ -62,6 +62,11 @@ if [ -n "${VNC_PASSWORD:-}" ]; then
       openssl genrsa -traditional -out "$WVNCDIR/rsa_key.pem" 2048 2>/dev/null
       chmod 600 "$WVNCDIR/rsa_key.pem"
     fi
+  elif ! grep -q 'BEGIN RSA PRIVATE KEY' "$WVNCDIR/rsa_key.pem"; then
+    # Neither PKCS#1 nor PKCS#8: a corrupt or hand-edited key. Not rotated
+    # silently (clients that pinned the old key would stop trusting the
+    # server); say how to recover, since wayvnc's own error doesn't.
+    echo "[wayvnc] WARNING: $WVNCDIR/rsa_key.pem is not an RSA private key; delete it to regenerate" >&2
   fi
   if [ ! -f "$WVNCDIR/tls_cert.pem" ]; then
     openssl req -x509 -newkey ec -pkeyopt ec_paramgen_curve:secp384r1 -sha384 \

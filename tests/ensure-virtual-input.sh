@@ -148,6 +148,13 @@ run_case "header-trailing-space" "$WORK/space.toml" "$WORK/space.want" yes
 printf '[virtual_input ]\nenabled = false\n' > "$WORK/inbracket.toml"
 printf '[virtual_input ]\nenabled = true\n' > "$WORK/inbracket.want"
 run_case "header-space-in-brackets" "$WORK/inbracket.toml" "$WORK/inbracket.want" yes
+
+# 5c. an indented later header ends [virtual_input] too: its `enabled = true`
+# must not satisfy the check (the B3 class again, round-2 review N2), and the
+# key is inserted under [virtual_input], not flipped in [other].
+printf '[virtual_input]\nfoo = 1\n  [other]\nenabled = true\n' > "$WORK/indhdr.toml"
+printf '[virtual_input]\nenabled = true\nfoo = 1\n  [other]\nenabled = true\n' > "$WORK/indhdr.want"
+run_case "indented-later-header" "$WORK/indhdr.toml" "$WORK/indhdr.want" yes
 mk "$WORK/hcomment.toml" <<'EOF'
 [virtual_input] # remote input
 foo = 1
