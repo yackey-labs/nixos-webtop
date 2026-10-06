@@ -40,17 +40,37 @@ jobs:
   #   gh workflow run "build images" --field image=image-webtop-scoot
   # Everything else builds the full matrix. A job-level `if` cannot read
   # `matrix`, so the selection happens here and the build fans out over it.
+  # This job also computes the single registry TAG for the run, so every
+  # matrix job and the manifest job below push/combine the same tag (each
+  # build job minting its own `date` could otherwise disagree by seconds).
   setup:
     runs-on: ubuntu-latest
     outputs:
       matrix: ${{ steps.set.outputs.matrix }}
+      tag: ${{ steps.set.outputs.tag }}
     steps:
+      - uses: actions/checkout@v5
+
       - id: set
         env:
           IMAGE: ${{ inputs.image }}
+          EVENT: ${{ github.event_name }}
+          PR_NUMBER: ${{ github.event.number }}
         run: |
           python3 - <<'EOF'
-          import json, os
+          import datetime, json, os, subprocess
+          # Multi-arch images build on both x86_64 (ubuntu-latest) and
+          # aarch64 (ubuntu-24.04-arm, GitHub-native arm64 runners, free for
+          # public repos -- never emulated). The VNC image is the required
+          # one; the Selkies scoot image is the next most useful (same scoot
+          # session over the other transport, so benchmark parity needs both
+          # arches too). The other six stay x86_64-only: arch-fanning all of
+          # them would double the matrix (8 -> 16 jobs) for images nobody
+          # asked to run on arm64.
+          multi = {
+              "image-webtop-scoot",
+              "image-scoot-vnc",
+          }
           all_images = [
             {"target": "image-webtop-niri", "name": "nixos-webtop-niri"},
             {"target": "image-webtop-hyprland", "name": "nixos-webtop-hyprland"},
@@ -64,8 +84,27 @@ jobs:
           want = os.environ.get("IMAGE") or "all"
           picked = all_images if want in ("", "all") else [i for i in all_images if i["target"] == want]
           assert picked, f"unknown image: {want}"
+          entries = []
+          for i in picked:
+            arches = ("x86_64", "aarch64") if i["target"] in multi else ("x86_64",)
+            for arch in arches:
+              entries.append({
+                **i,
+                "arch": arch,
+                "runner": "ubuntu-24.04-arm" if arch == "aarch64" else "ubuntu-latest",
+                "multi": i["target"] in multi,
+              })
+          sha = subprocess.run(
+            ["git", "rev-parse", "--short=7", "HEAD"],
+            capture_output=True, text=True, check=True).stdout.strip()
+          if os.environ.get("EVENT") == "pull_request":
+            tag = f"pr-{os.environ['PR_NUMBER']}-{sha}"
+          else:
+            stamp = datetime.datetime.now(datetime.timezone.utc).strftime("%Y%m%d%H%M%S")
+            tag = f"main-{sha}-{stamp}"
           with open(os.environ["GITHUB_OUTPUT"], "a") as f:
-            f.write(f"matrix={json.dumps({'image': picked})}\n")
+            f.write(f"matrix={json.dumps({'image': entries})}\n")
+            f.write(f"tag={tag}\n")
           EOF
 
   # Shell fixture tests (no Nix needed): the VNC image's
@@ -81,7 +120,7 @@ jobs:
 
   build:
     needs: setup
-    runs-on: ubuntu-latest
+    runs-on: ${{ matrix.image.runner }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.setup.outputs.matrix) }}
@@ -104,12 +143,22 @@ jobs:
       # to this repo and would never live in a binary cache anyway.
       - uses: actions/checkout@v5
 
+      # scoot's own CI pushes its packages to this Cachix on every merge to
+      # main (see the `nixConfig` in flake.nix, same values). The flake's
+      # nixConfig alone is NOT enough here: flake config applies only to
+      # trusted users, and the runner user is not one until the installer
+      # marks it -- so the substituter is set in the system nix.conf instead,
+      # which needs no prompt and works for untrusted users too.
       - uses: DeterminateSystems/nix-installer-action@main
+        with:
+          extra-conf: |
+            extra-substituters = https://scoot-sh.cachix.org
+            extra-trusted-public-keys = scoot-sh.cachix.org-1:QMj7CMw8uqZxrvqqm6SggdxTHz6Q4prt30ydDcXJXCo=
 
-      - name: Build ${{ matrix.image.target }}
+      - name: Build ${{ matrix.image.target }} (${{ matrix.image.arch }})
         id: build
         run: |
-          out="$(nix build ".#packages.x86_64-linux.${{ matrix.image.target }}" \
+          out="$(nix build ".#packages.${{ matrix.image.arch }}-linux.${{ matrix.image.target }}" \
                   --no-link --print-out-paths -L)"
           echo "tarball=$out" >> "$GITHUB_OUTPUT"
           ls -lh "$out"
@@ -121,31 +170,87 @@ jobs:
       # deployed and tested WITHOUT merging first. Previously every change cost
       # two full builds -- one to validate the PR, then an identical one on main
       # after merge -- before anything could be tried on the cluster.
+      #
+      # Multi-arch images push per-arch tags here (`<tag>-amd64`,
+      # `<tag>-arm64`); the `manifest` job below combines them into one
+      # multi-arch `<tag>` so `docker pull` picks the right arch. Single-arch
+      # images push `<tag>` directly, as before.
       - name: Push to GHCR
         env:
           REG: ghcr.io/${{ github.repository_owner }}/${{ matrix.image.name }}
+          TAG: ${{ needs.setup.outputs.tag }}
+          ARCH: ${{ matrix.image.arch }}
+          MULTI: ${{ matrix.image.multi }}
         run: |
-          SHA=$(git rev-parse --short=7 HEAD)
-          if [ "${{ github.event_name }}" = "pull_request" ]; then
-            TAG="pr-${{ github.event.number }}-${SHA}"
+          if [ "$MULTI" = "true" ]; then
+            case "$ARCH" in
+              x86_64) PUSH_TAG="${TAG}-amd64" ;;
+              aarch64) PUSH_TAG="${TAG}-arm64" ;;
+            esac
           else
-            TAG="main-${SHA}-$(date -u +%Y%m%d%H%M%S)"
+            PUSH_TAG="$TAG"
           fi
           nix run nixpkgs#skopeo -- --insecure-policy copy \
             --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
             "docker-archive:${{ steps.build.outputs.tarball }}" \
-            "docker://${REG}:${TAG}"
+            "docker://${REG}:${PUSH_TAG}"
           # Registry-to-registry, so this needs BOTH sets of credentials. With
           # only --dest-creds skopeo cannot read back the tag it just wrote:
           #   initializing source docker://...: unable to retrieve auth token:
           #   invalid username/password: unauthorized
           # The blobs are already uploaded, so this copy is just a manifest write.
-          # :latest tracks main only; PR tags stay out of it.
-          if [ "${{ github.event_name }}" != "pull_request" ]; then
+          # :latest tracks main only; PR tags stay out of it. (Multi-arch
+          # :latest is assembled in the `manifest` job, not here.)
+          if [ "${{ github.event_name }}" != "pull_request" ] && [ "$MULTI" != "true" ]; then
             nix run nixpkgs#skopeo -- --insecure-policy copy \
               --src-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
               --dest-creds "${{ github.actor }}:${{ secrets.GITHUB_TOKEN }}" \
-              "docker://${REG}:${TAG}" "docker://${REG}:latest"
+              "docker://${REG}:${PUSH_TAG}" "docker://${REG}:latest"
           fi
-          echo "pushed ${REG}:${TAG}"
-          echo "### \`${REG}:${TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "pushed ${REG}:${PUSH_TAG}"
+          echo "### \`${REG}:${PUSH_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+
+  # Combine each multi-arch image's per-arch tags into one manifest list, so
+  # `docker pull <tag>` resolves to the puller's architecture. `docker buildx
+  # imagetools create` is the tool: it is preinstalled on the hosted runners
+  # (no nix build of skopeo/manifest-tool needed in this job), works
+  # registry-to-registry on the same GITHUB_TOKEN the build jobs push with,
+  # and creates/updates the list in one command.
+  manifest:
+    needs: [setup, build]
+    runs-on: ubuntu-latest
+    steps:
+      - name: Combine multi-arch tags
+        env:
+          MATRIX: ${{ needs.setup.outputs.matrix }}
+          TAG: ${{ needs.setup.outputs.tag }}
+          OWNER: ${{ github.repository_owner }}
+          EVENT: ${{ github.event_name }}
+        run: |
+          echo "${{ secrets.GITHUB_TOKEN }}" | \
+            docker login ghcr.io -u "${{ github.actor }}" --password-stdin
+          python3 - <<'EOF'
+          import json, os, subprocess
+          matrix = json.loads(os.environ["MATRIX"])["image"]
+          tag = os.environ["TAG"]
+          owner = os.environ["OWNER"]
+          is_pr = os.environ.get("EVENT") == "pull_request"
+          seen = set()
+          for entry in matrix:
+            if not entry.get("multi") or entry["name"] in seen:
+              continue
+            seen.add(entry["name"])
+            reg = f"ghcr.io/{owner}/{entry['name']}"
+            cmd = ["docker", "buildx", "imagetools", "create",
+                   "--tag", f"{reg}:{tag}"]
+            if not is_pr:
+              cmd += ["--tag", f"{reg}:latest"]
+            cmd += [f"{reg}:{tag}-amd64", f"{reg}:{tag}-arm64"]
+            print("+", " ".join(cmd))
+            subprocess.run(cmd, check=True)
+          if not seen:
+            print("no multi-arch images in this matrix; nothing to combine")
+          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as f:
+            f.write(f"### manifest lists assembled for: "
+                    f"{', '.join(sorted(seen)) or '(none)'}\n")
+          EOF
