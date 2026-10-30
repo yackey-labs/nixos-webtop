@@ -3,12 +3,18 @@ name: build images
 # Public repo => unlimited free GitHub-hosted minutes and free GHCR storage.
 # Nothing here needs a self-hosted runner, which keeps cluster capacity for
 # things that actually have to run on the cluster.
+
+# Automatic builds are OFF while the desktops are decommissioned from the
+# cluster (see yackey-cloud-infra docs/decommissioned/desktops.md). Builds are
+# manual only: `gh workflow run "build images"`. To resume automatic builds,
+# restore this trigger block:
+#
+#   push:
+#     branches: [main]
+#     paths-ignore: ['**.md', 'docs-screenshot*.png']
+#   pull_request:
+#     paths-ignore: ['**.md', 'docs-screenshot*.png']
 on:
-  push:
-    branches: [main]
-    paths-ignore: ['**.md', 'docs-screenshot*.png']
-  pull_request:
-    paths-ignore: ['**.md', 'docs-screenshot*.png']
   workflow_dispatch:
     inputs:
       image:
